@@ -6,6 +6,7 @@ export const DEFAULTS = {
   language: "русском",
   context: "",
   autoMode: true, // Claude сам слушает и подсказывает — ничего вводить не нужно
+  autoOnMyVoice: true, // реагировать, когда я сам зачитываю вопрос вслух
   hideWhilePresenting: true,
   transcriptChars: 15000,
 };

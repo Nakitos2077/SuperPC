@@ -138,6 +138,8 @@ function main() {
   // Как только собеседник замолчал (пауза ~2.5 c) и сказал что-то новое, отправляем
   // новые реплики Claude. Он сам решает, нужен ли ответ, и если нет — молчит ([SKIP]).
   const SELF_RE = /^(you|вы|я|me)$/i;
+  // Чья речь запускает проверку: чужая всегда, своя — если включено «реагировать на мой голос».
+  const triggers = (speaker) => !SELF_RE.test(speaker) || settings.autoOnMyVoice;
   const AUTO_PAUSE_MS = 2500;
   const AUTO_MIN_GAP_MS = 6000;
   let autoTimer = null;
@@ -146,12 +148,12 @@ function main() {
   const autoSeen = new Map(); // line -> сколько символов этой реплики уже отправили
 
   function onLineChanged(line) {
-    if (!settings.autoMode || SELF_RE.test(line.speaker)) return;
+    if (!settings.autoMode || !triggers(line.speaker)) return;
     scheduleAuto(AUTO_PAUSE_MS);
   }
 
   function onChatMessage(line) {
-    if (!settings.autoMode || SELF_RE.test(line.speaker)) return;
+    if (!settings.autoMode || !triggers(line.speaker)) return;
     scheduleAuto(800); // сообщение в чате уже «законченное» — паузу ждать не нужно
   }
 
@@ -166,7 +168,7 @@ function main() {
       const seen = autoSeen.get(l) || 0;
       if (l.text.length <= seen) continue;
       // Свои реплики тоже даём для контекста, но триггерят проверку только чужие.
-      parts.push({ line: l, other: !SELF_RE.test(l.speaker), text: l.text.slice(seen).trim(), chat: !!l.chat });
+      parts.push({ line: l, other: triggers(l.speaker), text: l.text.slice(seen).trim(), chat: !!l.chat });
     }
     return parts;
   }
@@ -274,7 +276,7 @@ function main() {
   }
 
   // ----------------------------------------------------------------- Настройки
-  const settings = { autoMode: true, hideWhilePresenting: true };
+  const settings = { autoMode: true, autoOnMyVoice: true, hideWhilePresenting: true };
   chrome.storage.local.get(Object.keys(settings)).then((s) => {
     Object.assign(settings, s);
     syncAutoBox();
