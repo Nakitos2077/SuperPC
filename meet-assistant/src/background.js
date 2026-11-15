@@ -7,7 +7,17 @@ import { loadSettings } from "./settings.js";
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2"]);
 const SKIP = "[SKIP]";
 
+// Короткое правило про рисунок — ставится прямо в запрос (рядом с заданием модель выполняет его надёжнее).
+const FIGURE_RULE =
+  "Если в задании или вопросе упоминается рисунок («Рис.», «Рис. Пояснення», «рисунок», «малюнок», " +
+  "«схема», «графік», «креслення», «зобразіть», «намалюйте») — твой ответ ОБЯЗАТЕЛЬНО начинается " +
+  "с блока ```svg``` с рисунком, который ты рисуешь сам, а уже потом идёт текст.";
+
 const TASKS = {
+  draw:
+    "Нарисуй рисунок (схему/чертёж) к этому заданию одним блоком ```svg```: все векторы со стрелками, " +
+    "подписи величин и обозначений, как на рисунке в учебнике. После рисунка — 2–5 коротких пунктов: " +
+    "что на нём обозначено. Весь ответ заново не повторяй.",
   hint:
     "Посмотри на последние реплики в расшифровке. Если мне задали вопрос или ждут от меня ответа — " +
     "дай готовый ответ, который я могу сказать вслух (коротко, 2–5 предложений), и при необходимости " +
@@ -74,17 +84,21 @@ function buildSystem(s) {
   );
 }
 
-function buildUserContent({ task, question, transcript, recent, image }, s) {
+function buildUserContent({ task, question, transcript, recent, image, prev }, s) {
   const tail = transcript.length > s.transcriptChars
     ? "…(начало опущено)\n" + transcript.slice(-s.transcriptChars)
     : transcript;
   const parts = [];
   if (image) parts.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } });
   let text = "<transcript>\n" + (tail || "(расшифровка пока пустая)") + "\n</transcript>\n\n";
-  if (question && task === "screenshot") text += TASKS.screenshot + "\n\nМой вопрос к скриншоту: " + question;
+  if (task === "draw") {
+    text += TASKS.draw + (question ? "\n\nЗадание: " + question : "") +
+      (prev ? "\n\nМой предыдущий ответ на это задание:\n<answer>\n" + prev + "\n</answer>" : "");
+  } else if (question && task === "screenshot") text += TASKS.screenshot + "\n\nМой вопрос к скриншоту: " + question;
   else if (question) text += "Мой вопрос: " + question;
   else if (task === "auto") text += autoTask(recent || "");
   else text += TASKS[task] || TASKS.hint;
+  if (task !== "draw") text += "\n\n" + FIGURE_RULE;
   text += "\n\n" + languageRule(s);
   parts.push({ type: "text", text });
   return parts;
@@ -121,6 +135,12 @@ function connectCompanion() {
     ws.onmessage = (e) => {
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
+      if (m.type === "draw" && typeof m.key === "string") {
+        // Кнопка ✏️ в окне-компаньоне: просим вкладку Мита нарисовать рисунок к этой карточке.
+        const owner = keyOwners.get(m.key);
+        if (owner) { try { owner.port.postMessage({ type: "companion-draw", id: owner.id }); } catch {} }
+        return;
+      }
       if (m.type !== "screenshot" || typeof m.image !== "string") return;
       // Скрин из окна-компаньона: отдаём во вкладку Мита (там есть расшифровка для контекста).
       const port = [...ports].pop();
@@ -148,6 +168,7 @@ setInterval(() => {
 
 // ------------------------------------------------------------------ Запросы
 let keySeq = 0;
+const keyOwners = new Map(); // ключ карточки в окне-компаньоне -> { port, id } запроса во вкладке Мита
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "claude") return;
@@ -167,6 +188,8 @@ chrome.runtime.onConnect.addListener((port) => {
     if (msg.type !== "ask") return;
     const { id } = msg;
     const key = `${Date.now()}-${++keySeq}`;
+    keyOwners.set(key, { port, id });
+    if (keyOwners.size > 60) keyOwners.delete(keyOwners.keys().next().value);
     const isAuto = msg.task === "auto";
     const send = (m) => { try { port.postMessage({ id, ...m }); } catch {} };
     let shown = false;
@@ -174,7 +197,7 @@ chrome.runtime.onConnect.addListener((port) => {
       if (shown) return;
       shown = true;
       send({ type: "show" });
-      toCompanion({ type: "start", key, title: msg.label });
+      toCompanion({ type: "start", key, title: msg.label, drawable: msg.task !== "draw" });
     };
     const out = (m) => { send(m); toCompanion({ key, ...m }); };
 

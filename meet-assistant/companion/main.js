@@ -107,6 +107,10 @@ if (!gotLock) {
   });
   ipcMain.on("quit", () => app.quit());
   ipcMain.on("screenshot", takeScreenshot);
+  ipcMain.on("draw", (_e, key) => {
+    const client = [...clients].pop();
+    if (client && typeof key === "string") client.send(JSON.stringify({ type: "draw", key }));
+  });
   ipcMain.on("minimize", () => win?.minimize());
   ipcMain.on("opacity", (_e, v) => win?.setOpacity(Math.min(1, Math.max(0.3, Number(v) || 1))));
   app.on("window-all-closed", () => app.quit());

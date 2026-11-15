@@ -9,18 +9,21 @@ const el = (tag, props = {}, ...kids) => {
   return n;
 };
 
-function getCard(id, title) {
+function getCard(id, title, drawable = false) {
   let c = cards.get(id);
   if (c) return c;
   cardsBox.querySelector(".empty")?.remove();
   const close = el("button", { textContent: "✕", title: "Убрать" });
+  const draw = el("button", { textContent: "✏️", title: "Нарисовать рисунок к этому заданию", className: "draw" });
+  draw.style.display = "none";
+  draw.onclick = () => window.overlay.draw(id);
   const content = el("div", { className: "content" }, el("span", { className: "typing", textContent: "думаю…" }));
   const card = el("div", { className: "card" },
-    el("div", { className: "card-head" }, el("span", { className: "card-title", textContent: title || "Подсказка" }), close),
+    el("div", { className: "card-head" }, el("span", { className: "card-title", textContent: title || "Подсказка" }), draw, close),
     content);
   close.onclick = () => { card.remove(); cards.delete(id); };
   cardsBox.prepend(card);
-  c = { card, content, text: "" };
+  c = { card, content, text: "", draw, drawable };
   cards.set(id, c);
   while (cardsBox.children.length > 20) cardsBox.lastElementChild.remove();
   return c;
@@ -31,7 +34,7 @@ window.overlay.onHint((m) => {
     cardsBox.prepend(el("div", { className: "card" }, el("div", { className: "error", textContent: m.text })));
     return;
   }
-  if (m.type === "start") { getCard(m.key, m.title); return; }
+  if (m.type === "start") { getCard(m.key, m.title, !!m.drawable); return; }
   const c = cards.get(m.key);
   if (!c) return;
   if (m.type === "delta") {
@@ -39,8 +42,9 @@ window.overlay.onHint((m) => {
     c.content.replaceChildren(...window.renderRich(c.text));
   } else if (m.type === "error") {
     c.content.replaceChildren(el("div", { className: "error", textContent: m.text }));
-  } else if (m.type === "done" && !c.text) {
-    c.content.querySelector(".typing")?.replaceWith(el("span", { className: "muted", textContent: "(нет ответа)" }));
+  } else if (m.type === "done") {
+    if (!c.text) c.content.querySelector(".typing")?.replaceWith(el("span", { className: "muted", textContent: "(нет ответа)" }));
+    if (c.drawable) c.draw.style.display = "";
   }
 });
 

@@ -239,6 +239,7 @@ function main() {
     port = chrome.runtime.connect({ name: "claude" });
     port.onMessage.addListener((m) => {
       if (m.type === "companion") { companionOn = m.connected; updateStatus(); return; }
+      if (m.type === "companion-draw") { drawFor(m.id); return; }
       if (m.type === "companion-ask") { ask({ task: "screenshot", image: m.image, label: "📸 Скрин экрана" }); return; }
       handlers.get(m.id)?.(m);
     });
@@ -254,7 +255,16 @@ function main() {
   // Держим связь живой, пока открыт Мит.
   setInterval(() => { try { getPort().postMessage({ type: "ping" }); } catch {} }, 20000);
 
-  function ask({ task, question, withScreen, label, recent, onEnd, image = null }) {
+  // Запросы по id — чтобы по кнопке ✏️ нарисовать рисунок к тому же заданию (тот же скрин/вопрос).
+  const requests = new Map();
+
+  function drawFor(id) {
+    const r = requests.get(id);
+    if (!r) { showNotice("Это задание уже слишком старое — задай его снова."); return; }
+    ask({ task: "draw", question: r.question, image: r.image, prev: r.text, label: "✏️ Рисунок: " + r.title });
+  }
+
+  function ask({ task, question, withScreen, label, recent, onEnd, image = null, prev }) {
     if (withScreen) {
       try { image = captureVideoFrame(); } catch (e) { image = null; }
       if (!image) { showNotice("Не нашёл видео на экране для снимка."); onEnd?.(); return; }
@@ -263,13 +273,16 @@ function main() {
     const title = label || question || "Подсказка";
     const card = addCard(title, () => {
       try { getPort().postMessage({ type: "abort", id }); } catch {}
-    }, task === "auto");
+    }, task === "auto", task === "draw" ? null : () => drawFor(id));
     let text = "";
+    const req = { task, question, image, title, text: "" };
+    requests.set(id, req);
+    if (requests.size > 30) requests.delete(requests.keys().next().value);
     const end = () => { handlers.delete(id); updateBusy(); onEnd?.(); };
     handlers.set(id, (m) => {
       if (m.type === "show") card.show();
       else if (m.type === "skip") { card.remove(); end(); }
-      else if (m.type === "delta") { text += m.text; card.setBody(text); }
+      else if (m.type === "delta") { text += m.text; req.text = text; card.setBody(text); }
       else {
         if (m.type === "error") card.setError(m.text);
         card.finish();
@@ -278,7 +291,7 @@ function main() {
     });
     updateBusy();
     try {
-      getPort().postMessage({ type: "ask", id, task, question, label: title, recent, transcript: transcriptText(), image });
+      getPort().postMessage({ type: "ask", id, task, question, label: title, recent, prev, transcript: transcriptText(), image });
     } catch (e) {
       card.show();
       handlers.get(id)?.({ type: "error", text: "Расширение было обновлено — перезагрузи вкладку Мита." });
@@ -439,12 +452,14 @@ function main() {
     c.finish();
   }
 
-  function addCard(title, onStop, hidden = false) {
+  function addCard(title, onStop, hidden = false, onDraw = null) {
     const stop = el("button", { className: "icon", title: "Остановить", textContent: "■" });
+    const draw = el("button", { className: "icon draw hidden", title: "Нарисовать рисунок к этому заданию", textContent: "✏️" });
+    draw.onclick = () => onDraw?.();
     const close = el("button", { className: "icon", title: "Убрать", textContent: "✕" });
     const content = el("div", { className: "content" }, el("span", { className: "typing", textContent: "думаю…" }));
     const card = el("div", { className: "card" },
-      el("div", { className: "card-head" }, el("span", { className: "card-title", textContent: title }), stop, close),
+      el("div", { className: "card-head" }, el("span", { className: "card-title", textContent: title }), draw, stop, close),
       content);
     stop.onclick = () => onStop?.();
     if (!onStop) stop.remove();
@@ -459,6 +474,7 @@ function main() {
       setError(text) { content.replaceChildren(el("div", { className: "error", textContent: text })); },
       finish() {
         stop.remove();
+        if (onDraw && !content.querySelector(".error")) draw.classList.remove("hidden");
         content.querySelector(".typing")?.replaceWith(el("span", { className: "muted", textContent: "(нет ответа)" }));
       },
     };
