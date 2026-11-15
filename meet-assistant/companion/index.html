@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
 <title>Meet Assistant</title>
 <style>
   html, body { margin: 0; height: 100%; background: transparent; }
@@ -55,6 +55,7 @@
   </div>
   <div class="footer">Ctrl+Shift+S — скрин экрана и ответ · Ctrl+Shift+H — спрятать/показать</div>
 </div>
+<script src="render.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

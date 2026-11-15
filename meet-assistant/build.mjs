@@ -28,3 +28,16 @@ if (watch) {
 } else {
   await esbuild.build(options);
 }
+
+// Тот же рендер (формулы, рисунки) для окна-компаньона.
+const companionOptions = {
+  entryPoints: ["src/companion-render.js"],
+  outfile: "companion/render.js",
+  bundle: true,
+  format: "iife",
+  target: "chrome120",
+  logLevel: "info",
+  minify: !watch,
+};
+if (watch) await (await esbuild.context(companionOptions)).watch();
+else await esbuild.build(companionOptions);

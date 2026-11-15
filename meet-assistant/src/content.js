@@ -3,6 +3,7 @@
 //  2) сам (авто-режим) или по кнопке/горячей клавише отправляет расшифровку Claude;
 //  3) показывает ответы панелью поверх вкладки Мита.
 // Внимание: Meet использует Trusted Types, поэтому здесь нигде нет innerHTML — только DOM-API.
+import { renderRich, RICH_CSS } from "./render.js";
 
 const PANEL_ID = "meet-assistant-root";
 function main() {
@@ -191,7 +192,16 @@ function main() {
 
   // --------------------------------------------------------- Скриншот видео
   function captureVideoFrame() {
-    const videos = [...document.querySelectorAll("video")].filter((v) => v.videoWidth > 0 && v.offsetParent !== null);
+    // Своё превью камеры Meet показывает зеркально (scaleX(-1)) — его не берём, чтобы не снимать себя.
+    const mirrored = (v) => {
+      for (let n = v; n && n !== document.body; n = n.parentElement) {
+        const t = getComputedStyle(n).transform;
+        if (t && t.startsWith("matrix(-1")) return true;
+      }
+      return false;
+    };
+    const videos = [...document.querySelectorAll("video")]
+      .filter((v) => v.videoWidth > 0 && v.offsetParent !== null && !mirrored(v));
     if (!videos.length) return null;
     // Самое крупное видео на экране — обычно это демонстрация экрана или активный спикер.
     const v = videos.sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
@@ -308,7 +318,7 @@ function main() {
   host.style.cssText = "position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2147483647;";
   const root = host.attachShadow({ mode: "open" });
   const style = document.createElement("style");
-  style.textContent = CSS;
+  style.textContent = CSS + RICH_CSS;
   root.append(style);
 
   const el = (tag, props = {}, ...kids) => {
@@ -445,47 +455,13 @@ function main() {
     return {
       show() { card.classList.remove("hidden"); },
       remove() { card.remove(); },
-      setBody(text) { content.replaceChildren(...renderMarkdown(text)); },
+      setBody(text) { content.replaceChildren(...renderRich(text)); },
       setError(text) { content.replaceChildren(el("div", { className: "error", textContent: text })); },
       finish() {
         stop.remove();
         content.querySelector(".typing")?.replaceWith(el("span", { className: "muted", textContent: "(нет ответа)" }));
       },
     };
-  }
-
-  // Мини-рендер markdown без innerHTML: заголовки, списки, **жирный**, `код`.
-  function renderMarkdown(src) {
-    const out = [];
-    let list = null;
-    for (const raw of src.split("\n")) {
-      const line = raw.trimEnd();
-      const li = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
-      if (li) {
-        if (!list) { list = el("ul"); out.push(list); }
-        list.append(el("li", {}, ...inline(li[1])));
-        continue;
-      }
-      list = null;
-      if (!line.trim()) continue;
-      const h = line.match(/^#{1,6}\s+(.*)$/);
-      out.push(h ? el("div", { className: "h" }, ...inline(h[1])) : el("p", {}, ...inline(line)));
-    }
-    return out;
-  }
-
-  function inline(text) {
-    const nodes = [];
-    const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
-    let last = 0, m;
-    while ((m = re.exec(text))) {
-      if (m.index > last) nodes.push(text.slice(last, m.index));
-      const tok = m[0];
-      nodes.push(tok.startsWith("**") ? el("b", { textContent: tok.slice(2, -2) }) : el("code", { textContent: tok.slice(1, -1) }));
-      last = m.index + tok.length;
-    }
-    if (last < text.length) nodes.push(text.slice(last));
-    return nodes;
   }
 
   let renderPending = false;

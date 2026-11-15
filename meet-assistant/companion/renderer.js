@@ -9,39 +9,6 @@ const el = (tag, props = {}, ...kids) => {
   return n;
 };
 
-function renderMarkdown(src) {
-  const out = [];
-  let list = null;
-  for (const raw of src.split("\n")) {
-    const line = raw.trimEnd();
-    const li = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
-    if (li) {
-      if (!list) { list = el("ul"); out.push(list); }
-      list.append(el("li", {}, ...inline(li[1])));
-      continue;
-    }
-    list = null;
-    if (!line.trim()) continue;
-    const h = line.match(/^#{1,6}\s+(.*)$/);
-    out.push(h ? el("div", { className: "h" }, ...inline(h[1])) : el("p", {}, ...inline(line)));
-  }
-  return out;
-}
-
-function inline(text) {
-  const nodes = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
-  let last = 0, m;
-  while ((m = re.exec(text))) {
-    if (m.index > last) nodes.push(text.slice(last, m.index));
-    const tok = m[0];
-    nodes.push(tok.startsWith("**") ? el("b", { textContent: tok.slice(2, -2) }) : el("code", { textContent: tok.slice(1, -1) }));
-    last = m.index + tok.length;
-  }
-  if (last < text.length) nodes.push(text.slice(last));
-  return nodes;
-}
-
 function getCard(id, title) {
   let c = cards.get(id);
   if (c) return c;
@@ -69,7 +36,7 @@ window.overlay.onHint((m) => {
   if (!c) return;
   if (m.type === "delta") {
     c.text += m.text;
-    c.content.replaceChildren(...renderMarkdown(c.text));
+    c.content.replaceChildren(...window.renderRich(c.text));
   } else if (m.type === "error") {
     c.content.replaceChildren(el("div", { className: "error", textContent: m.text }));
   } else if (m.type === "done" && !c.text) {

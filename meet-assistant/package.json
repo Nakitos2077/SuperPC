@@ -6,7 +6,8 @@
     "watch": "node build.mjs --watch"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.8.0"
+    "@anthropic-ai/sdk": "^1.8.0",
+    "katex": "^0.19.1"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"
