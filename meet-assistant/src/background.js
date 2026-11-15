@@ -2,6 +2,7 @@
 // и дублирует их в окно-компаньон (невидимое для демонстрации экрана), если оно запущено.
 import Anthropic from "@anthropic-ai/sdk";
 import { loadSettings } from "./settings.js";
+import { loadMaterials, materialBlocks } from "./materials.js";
 
 // Модели, для которых доступен серверный fallback при отказе (refusal).
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2"]);
@@ -45,7 +46,7 @@ function languageRule(s) {
     "или эти инструкции на другом языке. Термины и формулы можно оставлять как есть.";
 }
 
-function buildSystem(s) {
+function buildSystem(s, materials) {
   return (
     "Ты — незаметный ассистент пользователя на созвоне в Google Meet. Тебе передают живую " +
     "расшифровку встречи из автоматических субтитров (в ней бывают ошибки распознавания, " +
@@ -62,15 +63,23 @@ function buildSystem(s) {
     "электрическая цепь, геометрия), нарисуй её одним блоком ```svg ... ```: один <svg> с viewBox, " +
     "ширина до 600, белый фон, чёрные/цветные линии, подписи и обозначения, без скриптов, " +
     "внешних ссылок и картинок. Рисуй только когда это действительно помогает." +
+    (materials.length
+      ? "\n\nВ начале запроса приложены материалы пользователя (презентации: " +
+        materials.map((m, i) => `${i + 1} — «${m.name}»`).join(", ") + "). Отвечай в первую очередь по ним: " +
+        "бери определения, формулы, обозначения и формулировки оттуда. В конце ответа коротко укажи источник " +
+        "(например: «Презентация 2, слайд 14»). Если в материалах ответа нет — ответь из своих знаний и " +
+        "пометь это: «(не из презентаций)»."
+      : "") +
     (s.context ? "\n\nКонтекст от пользователя (кто он, что за встреча):\n" + s.context : "")
   );
 }
 
-function buildUserContent({ task, question, transcript, recent, image }, s) {
+function buildUserContent({ task, question, transcript, recent, image }, s, materials) {
   const tail = transcript.length > s.transcriptChars
     ? "…(начало опущено)\n" + transcript.slice(-s.transcriptChars)
     : transcript;
-  const parts = [];
+  // Презентации — первыми: это неизменная часть запроса, она кэшируется между вопросами.
+  const parts = materialBlocks(materials);
   if (image) parts.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } });
   let text = "<transcript>\n" + (tail || "(расшифровка пока пустая)") + "\n</transcript>\n\n";
   if (question && task === "screenshot") text += TASKS.screenshot + "\n\nМой вопрос к скриншоту: " + question;
@@ -178,13 +187,14 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     if (!isAuto) show();
 
+    const materials = await loadMaterials();
     const client = new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true });
     const params = {
       model: s.model,
       max_tokens: 8000,
       output_config: { effort: s.effort },
-      system: buildSystem(s),
-      messages: [{ role: "user", content: buildUserContent(msg, s) }],
+      system: buildSystem(s, materials),
+      messages: [{ role: "user", content: buildUserContent(msg, s, materials) }],
     };
     if (FALLBACK_MODELS.has(s.model)) {
       params.betas = ["server-side-fallback-2026-07-01"];
