@@ -138,7 +138,33 @@ function main() {
     return lastChatSender || "?";
   }
 
+  // Чат Zoom (веб-клиент). Разметка Zoom не документирована — это попытка по известным классам.
+  const zoomChatSeen = new WeakSet();
+  function scanZoomChat() {
+    const items = document.querySelectorAll(
+      ".new-chat-message__container, .chat-message__container, [class*='chat-item__chat-info'], [class*='new-chat-item__chat-info']");
+    let added = false;
+    for (const it of items) {
+      if (zoomChatSeen.has(it) || it.closest("#" + PANEL_ID)) continue;
+      const textEl = it.querySelector("[class*='text-content'], [class*='chat-message__text'], [class*='rtf-box__display']");
+      const text = (textEl?.innerText || "").trim();
+      if (!text) continue;
+      zoomChatSeen.add(it);
+      const nameEl = it.closest("[class*='chat-item']")?.querySelector("[class*='sender'], [class*='chat-item__name']");
+      const speaker = (nameEl?.textContent || "").trim() || lastChatSender || "?";
+      lastChatSender = speaker;
+      const line = { speaker, text, chat: true, updated: Date.now() };
+      lines.push(line);
+      added = true;
+      if (chatReady) onChatMessage(line);
+      else autoSeen.set(line, text);
+    }
+    if (items.length) chatReady = true;
+    if (added) { setChatStatus(); renderTranscript(); }
+  }
+
   function scanChat() {
+    if (IS_ZOOM) return scanZoomChat();
     const msgs = document.querySelectorAll("[data-message-id]");
     let added = false;
     for (const m of msgs) {
@@ -399,6 +425,7 @@ function main() {
   const settings = { autoMode: true, autoOnMyVoice: true, hideWhilePresenting: true, speechSource: "audio", speechLang: "uk-UA" };
   chrome.storage.local.get(Object.keys(settings)).then((s) => {
     Object.assign(settings, s);
+    if (IS_ZOOM) settings.speechSource = host.isConnected ? "audio" : "off"; // у Zoom режима «субтитры» нет
     syncAutoBox();
     applyVisibility();
     configureSpeech();
@@ -406,6 +433,7 @@ function main() {
   });
   chrome.storage.onChanged.addListener((ch) => {
     for (const k of Object.keys(settings)) if (ch[k]) settings[k] = ch[k].newValue;
+    if (IS_ZOOM) settings.speechSource = host.isConnected ? "audio" : "off";
     syncAutoBox();
     applyVisibility();
     if (ch.speechSource || ch.speechLang) { configureSpeech(); updateStatus(); }
@@ -617,7 +645,13 @@ function main() {
   // Пытаемся включить субтитры, когда пользователь зашёл во встречу.
   // Субтитры — это «уши» ассистента, поэтому держим их включёнными всё время звонка.
   setInterval(() => {
-    if (settings.speechSource === "captions" && !findCaptionRegion()) tryEnableCaptions();
+    if (!IS_ZOOM && settings.speechSource === "captions" && !findCaptionRegion()) tryEnableCaptions();
+    // Zoom: если встреча открылась во фрейме, панель в обёртке убираем — она будет во фрейме.
+    if (IS_ZOOM && IS_TOP && host.isConnected && zoomMeetingFrame()) {
+      host.remove();
+      settings.speechSource = "off"; // слушать будет экземпляр во фрейме — здесь выключаем, чтобы не было дублей
+      configureSpeech();
+    }
   }, 4000);
   // page-hook мог ещё не получить настройку — повторяем, это безопасно.
   setInterval(configureSpeech, 5000);
@@ -677,4 +711,24 @@ button.icon:hover { color: #fff; }
 .hidden { display: none !important; }
 `;
 
-if (!document.getElementById(PANEL_ID)) main();
+// Где запускаться. Meet — только в главном окне вкладки. Zoom (веб-клиент) часто показывает
+// встречу во встроенном фрейме на весь экран — тогда работаем в нём, а не в обёртке.
+const IS_ZOOM = /(^|\.)zoom\.us$/.test(location.hostname);
+const IS_TOP = window === window.top;
+
+function zoomMeetingFrame() {
+  // Есть ли в этой странице большой фрейм со встречей Zoom (тогда панель должна быть в нём).
+  return [...document.querySelectorAll("iframe")].some((f) => {
+    const r = f.getBoundingClientRect();
+    return /\/wc\//.test(f.src || "") && r.width > innerWidth * 0.7 && r.height > innerHeight * 0.7;
+  });
+}
+
+function shouldRun() {
+  if (document.getElementById(PANEL_ID)) return false;
+  if (!IS_ZOOM) return IS_TOP;
+  if (!IS_TOP) return innerWidth > 700 && innerHeight > 400; // большой фрейм со встречей
+  return !zoomMeetingFrame();
+}
+
+if (shouldRun()) main();

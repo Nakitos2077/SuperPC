@@ -76,6 +76,32 @@
       return stream;
     };
   }
+  // Zoom (веб-клиент) проигрывает голоса через Web Audio, а не через <audio>. Подключаемся к выходу
+  // звука страницы: всё, что идёт в динамики, дублируем в дорожку, которую слушает распознавание.
+  const IS_MEET = location.hostname === "meet.google.com";
+  const AN = window.AudioNode;
+  if (!IS_MEET && AN && !AN.prototype.__meetAssistantHooked) {
+    AN.prototype.__meetAssistantHooked = true;
+    const connect = AN.prototype.connect;
+    const taps = new WeakMap(); // AudioContext -> MediaStreamAudioDestinationNode
+    AN.prototype.connect = function (target, ...rest) {
+      const result = connect.call(this, target, ...rest);
+      try {
+        if (target instanceof AudioDestinationNode && this.context.createMediaStreamDestination) {
+          let tap = taps.get(this.context);
+          if (!tap) {
+            tap = this.context.createMediaStreamDestination();
+            taps.set(this.context, tap);
+            for (const t of tap.stream.getAudioTracks()) remotes.add(t);
+            setTimeout(sync, 0);
+          }
+          connect.call(this, tap);
+        }
+      } catch {}
+      return result;
+    };
+  }
+
   const PC = window.RTCPeerConnection;
   if (PC && !PC.__meetAssistantHooked) {
     const Hooked = function (...args) {

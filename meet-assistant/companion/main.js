@@ -47,7 +47,7 @@ function sendStatus() {
 async function takeScreenshot() {
   const client = [...clients].pop();
   if (!client) {
-    win?.webContents.send("hint", { type: "fatal", text: "Сначала открой встречу в Google Meet в Chrome." });
+    win?.webContents.send("hint", { type: "fatal", text: "Сначала открой встречу в Chrome (Google Meet или Zoom в браузере)." });
     return;
   }
   try {

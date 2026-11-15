@@ -51,7 +51,7 @@ window.overlay.onHint((m) => {
 
 window.overlay.onStatus(({ connected }) => {
   $("dot").classList.toggle("on", connected);
-  $("status").textContent = connected ? "Подключено к Мит" : "Ждёт Chrome…";
+  $("status").textContent = connected ? "Подключено к встрече" : "Ждёт Chrome…";
 });
 
 $("quit").onclick = () => window.overlay.quit();
