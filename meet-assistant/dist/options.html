@@ -14,12 +14,6 @@
   .check { display: flex; gap: 8px; align-items: center; font-weight: normal; }
   button { margin-top: 20px; padding: 8px 20px; font: inherit; border: 0; border-radius: 8px; background: #1a73e8; color: #fff; cursor: pointer; }
   #saved { margin-left: 12px; color: #188038; }
-  .materials { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-  .mat { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 8px; }
-  .mat .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mat .meta { color: #5f6368; font-size: 12px; }
-  .mat button { margin: 0; padding: 2px 10px; background: #d93025; }
-  .err { color: #d93025; }
 </style>
 </head>
 <body>
@@ -54,14 +48,6 @@
 
 <label for="context">Контекст встречи <span class="hint">(необязательно)</span></label>
 <textarea id="context" placeholder="Например: Я — frontend-разработчик, это собеседование в компанию X на позицию Senior React. Подсказывай технические ответы."></textarea>
-
-<label>📚 Мои презентации <span class="hint">(Claude будет отвечать в первую очередь по ним)</span></label>
-<div id="materials" class="materials"></div>
-<input id="materialFiles" type="file" multiple accept=".pdf,.pptx,.txt,.md">
-<div class="hint">Лучше всего PDF: Claude видит слайды целиком — формулы, схемы, картинки.
-  PowerPoint: «Файл → Сохранить как → PDF». Из PPTX берётся только текст.
-  Файлы хранятся только в этом браузере и отправляются вместе с вопросами на api.anthropic.com.</div>
-<div id="materialsStatus" class="hint"></div>
 
 <label for="transcriptChars">Сколько последних символов расшифровки отправлять</label>
 <input id="transcriptChars" type="number" min="2000" max="200000" step="1000">
