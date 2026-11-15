@@ -17,6 +17,10 @@ const TASKS = {
   screen:
     "На изображении — то, что сейчас показывают на встрече (демонстрация экрана или видео). " +
     "Опиши, что там важного, и свяжи это с тем, что обсуждают. Если там вопрос/задача — помоги её решить.",
+  screenshot:
+    "На изображении — скриншот моего экрана (там может быть чат Мита, документ, слайд, задание). " +
+    "Найди на нём вопрос или задачу, обращённую ко мне (если их несколько — последнюю), и дай готовый ответ " +
+    "с коротким пояснением. Если вопроса нет — кратко скажи, что важного на экране.",
 };
 
 function autoTask(recent) {
@@ -49,7 +53,8 @@ function buildUserContent({ task, question, transcript, recent, image }, s) {
   const parts = [];
   if (image) parts.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } });
   let text = "<transcript>\n" + (tail || "(расшифровка пока пустая)") + "\n</transcript>\n\n";
-  if (question) text += "Мой вопрос: " + question;
+  if (question && task === "screenshot") text += TASKS.screenshot + "\n\nМой вопрос к скриншоту: " + question;
+  else if (question) text += "Мой вопрос: " + question;
   else if (task === "auto") text += autoTask(recent || "");
   else text += TASKS[task] || TASKS.hint;
   parts.push({ type: "text", text });
@@ -84,6 +89,19 @@ function connectCompanion() {
     ws = new WebSocket(COMPANION_URL);
     ws.onopen = broadcastCompanion;
     ws.onclose = () => { ws = null; broadcastCompanion(); };
+    ws.onmessage = (e) => {
+      let m;
+      try { m = JSON.parse(e.data); } catch { return; }
+      if (m.type !== "screenshot" || typeof m.image !== "string") return;
+      // Скрин из окна-компаньона: отдаём во вкладку Мита (там есть расшифровка для контекста).
+      const port = [...ports].pop();
+      if (port) port.postMessage({ type: "companion-ask", image: m.image });
+      else {
+        const key = `${Date.now()}-${++keySeq}`;
+        toCompanion({ type: "start", key, title: "📸 Скрин экрана" });
+        toCompanion({ key, type: "error", text: "Открой вкладку Google Meet — запросы идут через неё." });
+      }
+    };
     ws.onerror = () => {};
   } catch { ws = null; }
 }

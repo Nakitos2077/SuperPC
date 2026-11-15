@@ -73,18 +73,57 @@ function main() {
   let scanTimer = null;
   new MutationObserver(() => {
     if (scanTimer) return;
-    scanTimer = setTimeout(() => { scanTimer = null; scanCaptions(); }, 300);
+    scanTimer = setTimeout(() => { scanTimer = null; scanCaptions(); scanChat(); }, 300);
   }).observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  // -------------------------------------------------------------- Чат Мита
+  // Сообщения из чата встречи тоже идут в расшифровку (с пометкой «чат»).
+  // Чтобы Meet держал сообщения на странице, панель чата должна быть открыта.
+  const chatSeen = new Set();
+  let chatReady = false; // первые найденные сообщения — история, на них не отвечаем автоматически
+  let lastChatSender = "";
+
+  function chatSender(msgEl) {
+    for (let n = msgEl; n && n !== document.body; n = n.parentElement) {
+      const name = n.querySelector?.(":scope > * .poVWob, :scope > .poVWob, [data-sender-name]");
+      if (name) return name.getAttribute("data-sender-name") || name.textContent.trim();
+      if (n.hasAttribute?.("data-sender-id") || n.hasAttribute?.("data-sender-name")) break;
+    }
+    return lastChatSender || "?";
+  }
+
+  function scanChat() {
+    const msgs = document.querySelectorAll("[data-message-id]");
+    let added = false;
+    for (const m of msgs) {
+      if (m.closest("#" + PANEL_ID)) continue;
+      const id = m.getAttribute("data-message-id");
+      if (!id || chatSeen.has(id)) continue;
+      const textEl = m.querySelector('[jsname="dTKtvb"]') || m;
+      const text = (textEl.innerText || textEl.textContent || "").trim();
+      if (!text) continue;
+      chatSeen.add(id);
+      const speaker = chatSender(m);
+      lastChatSender = speaker;
+      const line = { speaker, text, chat: true, updated: Date.now() };
+      lines.push(line);
+      added = true;
+      if (chatReady) onChatMessage(line);
+      else autoSeen.set(line, text.length);
+    }
+    if (msgs.length) chatReady = true;
+    if (added) { setChatStatus(); renderTranscript(); }
+  }
 
   function transcriptText() {
     // Склеиваем подряд идущие реплики одного говорящего.
     const out = [];
     for (const l of lines) {
       const last = out[out.length - 1];
-      if (last && last.speaker === l.speaker) last.text += " " + l.text;
-      else out.push({ speaker: l.speaker, text: l.text });
+      if (last && last.speaker === l.speaker && last.chat === !!l.chat) last.text += " " + l.text;
+      else out.push({ speaker: l.speaker, text: l.text, chat: !!l.chat });
     }
-    return out.map((l) => `${l.speaker}: ${l.text}`).join("\n");
+    return out.map((l) => `${l.speaker}${l.chat ? " [в чате]" : ""}: ${l.text}`).join("\n");
   }
 
   function tryEnableCaptions() {
@@ -111,6 +150,11 @@ function main() {
     scheduleAuto(AUTO_PAUSE_MS);
   }
 
+  function onChatMessage(line) {
+    if (!settings.autoMode || SELF_RE.test(line.speaker)) return;
+    scheduleAuto(800); // сообщение в чате уже «законченное» — паузу ждать не нужно
+  }
+
   function scheduleAuto(delay) {
     clearTimeout(autoTimer);
     autoTimer = setTimeout(runAuto, delay);
@@ -122,7 +166,7 @@ function main() {
       const seen = autoSeen.get(l) || 0;
       if (l.text.length <= seen) continue;
       // Свои реплики тоже даём для контекста, но триггерят проверку только чужие.
-      parts.push({ line: l, other: !SELF_RE.test(l.speaker), text: l.text.slice(seen).trim() });
+      parts.push({ line: l, other: !SELF_RE.test(l.speaker), text: l.text.slice(seen).trim(), chat: !!l.chat });
     }
     return parts;
   }
@@ -133,10 +177,10 @@ function main() {
     const wait = AUTO_MIN_GAP_MS - (Date.now() - lastAutoAt);
     if (wait > 0) return scheduleAuto(wait);
     const parts = collectNewSpeech();
-    const otherChars = parts.filter((p) => p.other).reduce((n, p) => n + p.text.length, 0);
+    const otherChars = parts.filter((p) => p.other).reduce((n, p) => n + (p.chat ? 100 : p.text.length), 0);
     if (otherChars < 12) return;
     for (const p of parts) autoSeen.set(p.line, p.line.text.length);
-    const recent = parts.map((p) => `${p.line.speaker}: ${p.text}`).join("\n");
+    const recent = parts.map((p) => `${p.line.speaker}${p.chat ? " [в чате]" : ""}: ${p.text}`).join("\n");
     const who = [...new Set(parts.filter((p) => p.other).map((p) => p.line.speaker))].join(", ");
     lastAutoAt = Date.now();
     autoBusy = true;
@@ -157,6 +201,19 @@ function main() {
     return c.toDataURL("image/jpeg", 0.85).split(",")[1];
   }
 
+  async function imageToJpeg(file) {
+    const bmp = await createImageBitmap(file);
+    const scale = Math.min(1, 1568 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * scale);
+    c.height = Math.round(bmp.height * scale);
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    return c.toDataURL("image/jpeg", 0.9).split(",")[1];
+  }
+
   // ------------------------------------------------------------ Связь с Claude
   let port = null;
   let reqSeq = 0;
@@ -170,6 +227,7 @@ function main() {
     port = chrome.runtime.connect({ name: "claude" });
     port.onMessage.addListener((m) => {
       if (m.type === "companion") { companionOn = m.connected; updateStatus(); return; }
+      if (m.type === "companion-ask") { ask({ task: "screenshot", image: m.image, label: "📸 Скрин экрана" }); return; }
       handlers.get(m.id)?.(m);
     });
     port.onDisconnect.addListener(() => {
@@ -184,8 +242,7 @@ function main() {
   // Держим связь живой, пока открыт Мит.
   setInterval(() => { try { getPort().postMessage({ type: "ping" }); } catch {} }, 20000);
 
-  function ask({ task, question, withScreen, label, recent, onEnd }) {
-    let image = null;
+  function ask({ task, question, withScreen, label, recent, onEnd, image = null }) {
     if (withScreen) {
       try { image = captureVideoFrame(); } catch (e) { image = null; }
       if (!image) { showNotice("Не нашёл видео на экране для снимка."); onEnd?.(); return; }
@@ -273,7 +330,7 @@ function main() {
 
   const cards = el("div", { className: "cards" });
   const transcriptBox = el("div", { className: "transcript hidden" });
-  const input = el("input", { className: "q", placeholder: "Спроси что-нибудь про встречу… (Enter)" });
+  const input = el("input", { className: "q", placeholder: "Спроси что-нибудь… (Enter) · или вставь скрин Ctrl+V" });
   const btn = (label, title, fn) => { const b = el("button", { textContent: label, title }); b.onclick = fn; return b; };
   const ccBtn = btn("CC", "Включить субтитры Мита", () => {
     if (!tryEnableCaptions()) showNotice("Не нашёл кнопку субтитров — включи их вручную (кнопка CC или клавиша C).");
@@ -298,6 +355,20 @@ function main() {
     }
   });
   input.addEventListener("keyup", (e) => e.stopPropagation());
+  // Ctrl+V скриншота (например, Win+Shift+S) — отправляем картинку Claude.
+  input.addEventListener("paste", async (e) => {
+    const file = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"))?.getAsFile();
+    if (!file) return;
+    e.preventDefault();
+    const q = input.value.trim();
+    input.value = "";
+    try {
+      const image = await imageToJpeg(file);
+      ask({ task: "screenshot", image, question: q || undefined, label: "🖼 Скрин" + (q ? ": " + q : "") });
+    } catch {
+      showNotice("Не получилось прочитать картинку из буфера обмена.");
+    }
+  });
   input.addEventListener("keypress", (e) => e.stopPropagation());
 
   autoBox.onchange = () => chrome.storage.local.set({ autoMode: autoBox.checked });
@@ -339,10 +410,14 @@ function main() {
   function updateStatus() {
     if (typeof statusDot === "undefined") return;
     statusDot.classList.toggle("on", captionsOn);
-    statusText.textContent = captionsOn ? `Слушаю · ${lines.length} реплик` : "Включаю субтитры…";
+    const chatCount = lines.filter((l) => l.chat).length;
+    statusText.textContent = (captionsOn ? `Слушаю · ${lines.length - chatCount} реплик` : "Включаю субтитры…") +
+      (chatCount ? ` · 💬 ${chatCount}` : "");
     ccBtn.classList.toggle("hidden", captionsOn);
     companionBadge.classList.toggle("hidden", !companionOn);
   }
+
+  function setChatStatus() { updateStatus(); }
 
   function updateBusy() { panel.classList.toggle("busy", handlers.size > 0); }
 
@@ -430,6 +505,7 @@ function main() {
   updateStatus();
   try { getPort(); } catch {}
   scanCaptions();
+  scanChat();
 }
 
 var CSS = `

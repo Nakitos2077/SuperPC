@@ -2,7 +2,7 @@
 // Окно включает защиту контента (setContentProtection): Windows и macOS не отдают его
 // в захват экрана, поэтому на демонстрации в Мите (и в записи) его не видно — видишь только ты.
 // Расширение Chrome подключается к локальному WebSocket и присылает сюда подсказки.
-const { app, BrowserWindow, screen, ipcMain, globalShortcut } = require("electron");
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, desktopCapturer } = require("electron");
 const path = require("node:path");
 const { WebSocketServer } = require("ws");
 
@@ -40,6 +40,26 @@ function createWindow() {
 
 function sendStatus() {
   win?.webContents.send("status", { connected: clients.size > 0 });
+}
+
+// Снимок экрана, на котором сейчас курсор. Само окно подсказок в снимок не попадает
+// (из-за защиты контента), поэтому Claude видит экран так же, как участники встречи.
+async function takeScreenshot() {
+  const client = [...clients].pop();
+  if (!client) {
+    win?.webContents.send("hint", { type: "fatal", text: "Сначала открой встречу в Google Meet в Chrome." });
+    return;
+  }
+  try {
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1568, height: 1568 } });
+    const src = sources.find((s) => s.display_id === String(display.id)) || sources[0];
+    if (!src || src.thumbnail.isEmpty()) throw new Error("пустой снимок");
+    const image = src.thumbnail.toJPEG(85).toString("base64");
+    client.send(JSON.stringify({ type: "screenshot", image }));
+  } catch (err) {
+    win?.webContents.send("hint", { type: "fatal", text: "Не удалось сделать скрин: " + err.message });
+  }
 }
 
 function startServer() {
@@ -82,8 +102,11 @@ if (!gotLock) {
       if (!win) return;
       win.isVisible() ? win.hide() : win.showInactive();
     });
+    // Ctrl/Cmd+Shift+S — скрин экрана и ответ Claude.
+    globalShortcut.register("CommandOrControl+Shift+S", takeScreenshot);
   });
   ipcMain.on("quit", () => app.quit());
+  ipcMain.on("screenshot", takeScreenshot);
   ipcMain.on("minimize", () => win?.minimize());
   ipcMain.on("opacity", (_e, v) => win?.setOpacity(Math.min(1, Math.max(0.3, Number(v) || 1))));
   app.on("window-all-closed", () => app.quit());

@@ -83,6 +83,7 @@ window.overlay.onStatus(({ connected }) => {
 });
 
 $("quit").onclick = () => window.overlay.quit();
+$("shot").onclick = () => window.overlay.screenshot();
 $("min").onclick = () => window.overlay.minimize();
 $("clear").onclick = () => {
   cards.clear();
