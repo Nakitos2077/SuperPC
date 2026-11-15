@@ -46,6 +46,21 @@
   <option value="том же, на котором идёт разговор">Как в разговоре</option>
 </select>
 
+<label for="speechSource">Как слушать разговор</label>
+<select id="speechSource">
+  <option value="audio">Звук: распознавание речи Chrome (микрофон + голоса собеседников)</option>
+  <option value="captions">Субтитры Google Meet (с именами участников)</option>
+</select>
+<div class="hint">«Звук» не требует субтитров и бесплатен. Нужен Chrome 135 или новее, иначе слышен только микрофон.
+  Собеседники подписываются «Співрозмовник» (имена знают только субтитры).</div>
+
+<label for="speechLang">Язык речи на встрече (для распознавания звука)</label>
+<select id="speechLang">
+  <option value="uk-UA">Українська</option>
+  <option value="ru-RU">Русский</option>
+  <option value="en-US">English</option>
+</select>
+
 <label for="context">Контекст встречи <span class="hint">(необязательно)</span></label>
 <textarea id="context" placeholder="Например: Я — frontend-разработчик, это собеседование в компанию X на позицию Senior React. Подсказывай технические ответы."></textarea>
 

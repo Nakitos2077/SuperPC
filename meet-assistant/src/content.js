@@ -44,6 +44,7 @@ function main() {
   }
 
   function scanCaptions() {
+    if (settings.speechSource !== "captions") return; // в режиме «звук» субтитры не читаем
     const region = findCaptionRegion();
     setCaptionStatus(!!region);
     if (!region) return;
@@ -76,6 +77,48 @@ function main() {
     if (scanTimer) return;
     scanTimer = setTimeout(() => { scanTimer = null; scanCaptions(); scanChat(); }, 300);
   }).observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  // ------------------------------------------------------- Речь по звуку
+  // page-hook.js распознаёт звук (микрофон и голоса собеседников) и присылает текст сюда.
+  const SPEAKER = { self: "Вы", other: "Співрозмовник" };
+  const utterances = new Map(); // id фразы -> строка расшифровки
+  let speechInfo = null; // последнее состояние распознавания
+  let speechError = "";
+
+  function configureSpeech() {
+    window.postMessage({ source: "meet-assistant-cmd", type: "speech-config",
+      enabled: settings.speechSource === "audio", lang: settings.speechLang }, location.origin);
+  }
+
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || e.data?.source !== "meet-assistant") return;
+    const m = e.data;
+    if (m.type === "speech" && settings.speechSource === "audio") {
+      let line = utterances.get(m.utt);
+      if (!line) {
+        line = { speaker: SPEAKER[m.who] || "?", text: "", updated: 0 };
+        utterances.set(m.utt, line);
+        lines.push(line);
+        if (utterances.size > 500) utterances.delete(utterances.keys().next().value);
+      }
+      if (line.text !== m.text) {
+        line.text = m.text;
+        line.updated = Date.now();
+        speechError = "";
+        onLineChanged(line);
+        updateStatus();
+        renderTranscript();
+      }
+    } else if (m.type === "speech-status") {
+      speechInfo = m;
+      updateStatus();
+    } else if (m.type === "speech-error") {
+      const names = { "not-allowed": "нет доступа к микрофону", "audio-capture": "нет звука с микрофона",
+        network: "нет связи с сервисом распознавания", "language-not-supported": "язык не поддерживается" };
+      speechError = names[m.error] || m.error;
+      updateStatus();
+    }
+  });
 
   // -------------------------------------------------------------- Чат Мита
   // Сообщения из чата встречи тоже идут в расшифровку (с пометкой «чат»).
@@ -299,16 +342,19 @@ function main() {
   }
 
   // ----------------------------------------------------------------- Настройки
-  const settings = { autoMode: true, autoOnMyVoice: true, hideWhilePresenting: true };
+  const settings = { autoMode: true, autoOnMyVoice: true, hideWhilePresenting: true, speechSource: "audio", speechLang: "uk-UA" };
   chrome.storage.local.get(Object.keys(settings)).then((s) => {
     Object.assign(settings, s);
     syncAutoBox();
     applyVisibility();
+    configureSpeech();
+    updateStatus();
   });
   chrome.storage.onChanged.addListener((ch) => {
     for (const k of Object.keys(settings)) if (ch[k]) settings[k] = ch[k].newValue;
     syncAutoBox();
     applyVisibility();
+    if (ch.speechSource || ch.speechLang) { configureSpeech(); updateStatus(); }
   });
 
   // ------------------------------------------------- Демонстрация экрана
@@ -434,11 +480,23 @@ function main() {
   }
   function updateStatus() {
     if (typeof statusDot === "undefined") return;
-    statusDot.classList.toggle("on", captionsOn);
     const chatCount = lines.filter((l) => l.chat).length;
-    statusText.textContent = (captionsOn ? `Слушаю · ${lines.length - chatCount} реплик` : "Включаю субтитры…") +
-      (chatCount ? ` · 💬 ${chatCount}` : "");
-    ccBtn.classList.toggle("hidden", captionsOn);
+    const spoken = lines.length - chatCount;
+    let on, text;
+    if (settings.speechSource === "audio") {
+      const sources = speechInfo ? speechInfo.mics + speechInfo.remotes : 0;
+      on = !!speechInfo?.supported && sources > 0 && !speechError;
+      if (speechInfo && !speechInfo.supported) text = "Браузер не умеет распознавать речь — включи субтитры в настройках";
+      else if (speechError) text = "🎙 Ошибка: " + speechError;
+      else if (!sources) text = "🎙 Жду звук встречи…";
+      else text = `🎙 Слушаю звук · ${spoken} фраз` + (speechInfo.trackInput ? "" : " (только микрофон — обнови Chrome)");
+    } else {
+      on = captionsOn;
+      text = captionsOn ? `Слушаю · ${spoken} реплик` : "Включаю субтитры…";
+    }
+    statusDot.classList.toggle("on", on);
+    statusText.textContent = text + (chatCount ? ` · 💬 ${chatCount}` : "");
+    ccBtn.classList.toggle("hidden", settings.speechSource === "audio" || captionsOn);
     companionBadge.classList.toggle("hidden", !companionOn);
   }
 
@@ -494,7 +552,12 @@ function main() {
 
   // Пытаемся включить субтитры, когда пользователь зашёл во встречу.
   // Субтитры — это «уши» ассистента, поэтому держим их включёнными всё время звонка.
-  setInterval(() => { if (!findCaptionRegion()) tryEnableCaptions(); }, 4000);
+  setInterval(() => {
+    if (settings.speechSource === "captions" && !findCaptionRegion()) tryEnableCaptions();
+  }, 4000);
+  // page-hook мог ещё не получить настройку — повторяем, это безопасно.
+  setInterval(configureSpeech, 5000);
+  configureSpeech();
   applyVisibility();
   updateStatus();
   try { getPort(); } catch {}

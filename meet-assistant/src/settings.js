@@ -8,6 +8,8 @@ export const DEFAULTS = {
   autoMode: true, // Claude сам слушает и подсказывает — ничего вводить не нужно
   autoOnMyVoice: true, // реагировать, когда я сам зачитываю вопрос вслух
   hideWhilePresenting: true,
+  speechSource: "audio", // "audio" — распознавание звука встречи, "captions" — субтитры Мита
+  speechLang: "uk-UA",
   transcriptChars: 15000,
 };
 
