@@ -27,7 +27,7 @@ $("save").onclick = async () => {
 
 // ---------------------------------------------------------------- Презентации
 import JSZip from "jszip";
-import { loadMaterials, saveMaterials, MAX_TOTAL_BYTES, MAX_TOTAL_PAGES } from "./materials.js";
+import { loadMaterials, addMaterials, deleteMaterial, MAX_TOTAL_BYTES, MAX_TOTAL_PAGES } from "./materials.js";
 
 const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " МБ" : Math.ceil(n / 1024) + " КБ");
 
@@ -86,7 +86,7 @@ async function renderMaterials() {
     });
     const del = Object.assign(document.createElement("button"), { textContent: "Удалить" });
     del.onclick = async () => {
-      await saveMaterials((await loadMaterials()).filter((x) => x.id !== m.id));
+      await deleteMaterial(m.id);
       renderMaterials();
     };
     row.append(name, meta, del);
@@ -101,6 +101,7 @@ $("materialFiles").onchange = async (e) => {
   const status = $("materialsStatus");
   status.classList.remove("err");
   const list = await loadMaterials();
+  const added = [];
   try {
     for (const file of e.target.files) {
       status.textContent = `Обрабатываю «${file.name}»…`;
@@ -116,13 +117,15 @@ $("materialFiles").onchange = async (e) => {
         const text = new TextDecoder().decode(buf);
         item = { kind: "text", data: text, size: text.length, pages: 0 };
       }
-      list.push({ id: crypto.randomUUID(), name: file.name, ...item });
+      const rec = { id: crypto.randomUUID(), name: file.name, added: Date.now() + added.length, ...item };
+      list.push(rec);
+      added.push(rec);
     }
     const bytes = list.reduce((n, m) => n + (m.kind === "pdf" ? m.data.length : m.size), 0);
     const pages = list.reduce((n, m) => n + (m.pages || 0), 0);
     if (bytes > MAX_TOTAL_BYTES) throw new Error(`Слишком большой объём (${fmtSize(bytes)}). Максимум ~${fmtSize(MAX_TOTAL_BYTES)} — сожми PDF или убери лишнее.`);
     if (pages > MAX_TOTAL_PAGES) throw new Error(`Слишком много страниц (~${pages}). Максимум ~${MAX_TOTAL_PAGES}.`);
-    await saveMaterials(list);
+    await addMaterials(added);
     await renderMaterials();
   } catch (err) {
     status.classList.add("err");

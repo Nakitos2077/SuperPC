@@ -1,19 +1,51 @@
 // Материалы пользователя (презентации), по которым Claude отвечает в первую очередь.
-// Хранятся в chrome.storage.local (с разрешением unlimitedStorage) под ключом "materials".
-// Формат: [{ id, name, kind: "pdf" | "text", data, size, pages }]
+// Хранятся в IndexedDB расширения (общей для страницы настроек и service worker):
+// у chrome.storage.local лимит ~10 МБ, а презентации бывают больше.
+// Формат записи: { id, name, kind: "pdf" | "text", data, size, pages, added }
 //  - pdf  — base64 файла, Claude видит слайды целиком (текст, формулы, схемы, картинки);
 //  - text — извлечённый текст (из PPTX/TXT), картинки при этом теряются.
 
 export const MAX_TOTAL_BYTES = 24 * 1024 * 1024; // запрос к API ограничен 32 МБ, оставляем запас
 export const MAX_TOTAL_PAGES = 550;
 
-export async function loadMaterials() {
-  const { materials } = await chrome.storage.local.get("materials");
-  return Array.isArray(materials) ? materials : [];
+const DB_NAME = "meet-assistant";
+const STORE = "materials";
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: "id" });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
 }
 
-export async function saveMaterials(list) {
-  await chrome.storage.local.set({ materials: list });
+async function tx(mode, fn) {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const t = db.transaction(STORE, mode);
+      const result = fn(t.objectStore(STORE));
+      t.oncomplete = () => resolve(result?.result ?? result);
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error || new Error("транзакция отменена"));
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function loadMaterials() {
+  const list = await tx("readonly", (s) => s.getAll());
+  return (list || []).sort((a, b) => (a.added || 0) - (b.added || 0));
+}
+
+export async function addMaterials(items) {
+  await tx("readwrite", (s) => { for (const it of items) s.put(it); });
+}
+
+export async function deleteMaterial(id) {
+  await tx("readwrite", (s) => s.delete(id));
 }
 
 // Блоки документов для запроса. На последнем ставим cache_control: тогда при следующих запросах
