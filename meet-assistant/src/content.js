@@ -153,7 +153,7 @@ function main() {
       lines.push(line);
       added = true;
       if (chatReady) onChatMessage(line);
-      else autoSeen.set(line, text.length);
+      else autoSeen.set(line, text);
     }
     if (msgs.length) chatReady = true;
     if (added) { setChatStatus(); renderTranscript(); }
@@ -189,7 +189,22 @@ function main() {
   let autoTimer = null;
   let lastAutoAt = 0;
   let autoBusy = false;
-  const autoSeen = new Map(); // line -> сколько символов этой реплики уже отправили
+  const autoSeen = new Map(); // line -> текст этой реплики, который уже отправляли
+  const autoAnswers = []; // последние показанные авто-подсказки (чтобы не отвечать дважды на одно и то же)
+  const words = (t) => t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
+
+  // Что нового в реплике с прошлой отправки. Распознавание речи часто переписывает фразу
+  // (черновик → итог, правит слова и знаки), поэтому сравниваем по словам, а не по длине.
+  function newPart(line) {
+    const seen = autoSeen.get(line);
+    if (!seen) return line.text.trim();
+    const a = words(seen), b = words(line.text);
+    let i = 0;
+    while (i < a.length && i < b.length && a[i] === b[i]) i++;
+    // Переписаны только уже отправленные слова (без новых в конце) — нового нет.
+    if (b.length <= a.length) return "";
+    return b.slice(Math.max(i, a.length)).join(" ");
+  }
 
   function onLineChanged(line) {
     if (!settings.autoMode || !triggers(line.speaker)) return;
@@ -209,10 +224,10 @@ function main() {
   function collectNewSpeech() {
     const parts = [];
     for (const l of lines) {
-      const seen = autoSeen.get(l) || 0;
-      if (l.text.length <= seen) continue;
+      const text = newPart(l);
+      if (!text) continue;
       // Свои реплики тоже даём для контекста, но триггерят проверку только чужие.
-      parts.push({ line: l, other: triggers(l.speaker), text: l.text.slice(seen).trim(), chat: !!l.chat });
+      parts.push({ line: l, other: triggers(l.speaker), text, chat: !!l.chat });
     }
     return parts;
   }
@@ -225,12 +240,18 @@ function main() {
     const parts = collectNewSpeech();
     const otherChars = parts.filter((p) => p.other).reduce((n, p) => n + (p.chat ? 100 : p.text.length), 0);
     if (otherChars < 12) return;
-    for (const p of parts) autoSeen.set(p.line, p.line.text.length);
+    for (const p of parts) autoSeen.set(p.line, p.line.text);
     const recent = parts.map((p) => `${p.line.speaker}${p.chat ? " [в чате]" : ""}: ${p.text}`).join("\n");
     const who = [...new Set(parts.filter((p) => p.other).map((p) => p.line.speaker))].join(", ");
     lastAutoAt = Date.now();
     autoBusy = true;
-    ask({ task: "auto", recent, label: "🤖 " + who, onEnd: () => { autoBusy = false; } });
+    ask({
+      task: "auto", recent, label: "🤖 " + who, previous: autoAnswers.slice(-3),
+      onEnd: (answer) => {
+        autoBusy = false;
+        if (answer) { autoAnswers.push(answer.slice(0, 400)); if (autoAnswers.length > 5) autoAnswers.shift(); }
+      },
+    });
   }
 
   // --------------------------------------------------------- Скриншот видео
@@ -307,7 +328,7 @@ function main() {
     ask({ task: "draw", question: r.question, image: r.image, prev: r.text, label: "✏️ Рисунок: " + r.title });
   }
 
-  function ask({ task, question, withScreen, label, recent, onEnd, image = null, prev }) {
+  function ask({ task, question, withScreen, label, recent, onEnd, image = null, prev, previous }) {
     if (withScreen) {
       try { image = captureVideoFrame(); } catch (e) { image = null; }
       if (!image) { showNotice("Не нашёл видео на экране для снимка."); onEnd?.(); return; }
@@ -321,10 +342,10 @@ function main() {
     const req = { task, question, image, title, text: "" };
     requests.set(id, req);
     if (requests.size > 30) requests.delete(requests.keys().next().value);
-    const end = () => { handlers.delete(id); updateBusy(); onEnd?.(); };
+    const end = (shown = true) => { handlers.delete(id); updateBusy(); onEnd?.(shown ? text : ""); };
     handlers.set(id, (m) => {
       if (m.type === "show") card.show();
-      else if (m.type === "skip") { card.remove(); end(); }
+      else if (m.type === "skip") { card.remove(); end(false); }
       else if (m.type === "delta") { text += m.text; req.text = text; card.setBody(text); }
       else {
         if (m.type === "error") card.setError(m.text);
@@ -334,7 +355,7 @@ function main() {
     });
     updateBusy();
     try {
-      getPort().postMessage({ type: "ask", id, task, question, label: title, recent, prev, transcript: transcriptText(), image });
+      getPort().postMessage({ type: "ask", id, task, question, label: title, recent, prev, previous, transcript: transcriptText(), image });
     } catch (e) {
       card.show();
       handlers.get(id)?.({ type: "error", text: "Расширение было обновлено — перезагрузи вкладку Мита." });

@@ -33,9 +33,14 @@ const TASKS = {
     "с коротким пояснением. Если вопроса нет — кратко объясни содержание по теме.",
 };
 
-function autoTask(recent) {
+function autoTask(recent, previous) {
   return (
     "Ты работаешь в авто-режиме: я ничего не спрашиваю, ты сам следишь за разговором.\n" +
+    (previous?.length
+      ? "Подсказки, которые ты уже показал мне недавно:\n<shown>\n" + previous.join("\n---\n") + "\n</shown>\n" +
+        "Если новые реплики — это тот же вопрос (повтор, уточнение распознавания, переформулировка) " +
+        "и ответ на него уже показан — ответь " + SKIP + ".\n\n"
+      : "") +
     "Новые реплики с прошлой проверки:\n<new>\n" + recent + "\n</new>\n\n" +
     "Если в новых репликах мне (пользователю) задали вопрос, о чём-то попросили, ждут моего ответа, " +
     "мнения или решения — сразу дай готовый ответ, который я могу сказать вслух (2–5 предложений), " +
@@ -89,7 +94,7 @@ function buildSystem(s) {
   );
 }
 
-function buildUserContent({ task, question, transcript, recent, image, prev }, s) {
+function buildUserContent({ task, question, transcript, recent, image, prev, previous }, s) {
   const tail = transcript.length > s.transcriptChars
     ? "…(начало опущено)\n" + transcript.slice(-s.transcriptChars)
     : transcript;
@@ -101,7 +106,7 @@ function buildUserContent({ task, question, transcript, recent, image, prev }, s
       (prev ? "\n\nМой предыдущий ответ на это задание:\n<answer>\n" + prev + "\n</answer>" : "");
   } else if (question && task === "screenshot") text += TASKS.screenshot + "\n\nМой вопрос к скриншоту: " + question;
   else if (question) text += "Мой вопрос: " + question;
-  else if (task === "auto") text += autoTask(recent || "");
+  else if (task === "auto") text += autoTask(recent || "", previous);
   else text += TASKS[task] || TASKS.hint;
   if (task !== "draw") text += "\n\n" + FIGURE_RULE;
   text += "\n\n" + languageRule(s);

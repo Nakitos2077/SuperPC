@@ -56,6 +56,7 @@
   const mics = new Set();    // свои дорожки микрофона
   const remotes = new Set(); // входящие дорожки собеседников
   const sessions = new Map(); // track -> распознаватель
+  const failedAt = new WeakMap(); // дорожка, которую не удалось слушать -> когда (повторим позже)
   let enabled = false;
   let enabledAt = 0;
   let lastError = "";
@@ -93,6 +94,8 @@
   // --- распознавание
   function listen(track, who) {
     if (sessions.has(track)) return;
+    // Неактивные каналы Мита (молчащие/завершённые) не дают запустить распознавание — пробуем раз в 15 с.
+    if (Date.now() - (failedAt.get(track) || 0) < 15000) return;
     const rec = new (getSR())();
     rec.lang = lang;
     rec.continuous = true;
@@ -100,6 +103,7 @@
     const s = { rec, stopped: false, utt: null };
     sessions.set(track, s);
     rec.onresult = (e) => {
+      lastError = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
         const text = r[0].transcript.trim();
@@ -126,8 +130,12 @@
       start();
     } catch (err) {
       sessions.delete(track);
-      lastError = String(err?.message || err);
-      post({ type: "speech-error", who, error: lastError });
+      failedAt.set(track, Date.now());
+      // Для каналов собеседников это нормально (у Мита есть запасные неактивные каналы) — не пугаем ошибкой.
+      if (who === "self") {
+        lastError = String(err?.message || err);
+        post({ type: "speech-error", who, error: lastError });
+      }
     }
   }
 
