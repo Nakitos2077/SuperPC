@@ -1,6 +1,6 @@
 // Content script для meet.google.com:
 //  1) читает живые субтитры Мита (это и есть «слух» — Meet сам распознаёт речь всех участников);
-//  2) по кнопке/горячей клавише/автоматически отправляет расшифровку Claude;
+//  2) сам (авто-режим) или по кнопке/горячей клавише отправляет расшифровку Claude;
 //  3) показывает ответы панелью поверх вкладки Мита.
 // Внимание: Meet использует Trusted Types, поэтому здесь нигде нет innerHTML — только DOM-API.
 
@@ -96,27 +96,51 @@ function main() {
   }
 
   // ------------------------------------------------------------- Авто-режим
-  const QUESTION_RE =
-    /\?\s*$|^(как|что|почему|зачем|когда|где|кто|какой|какая|какие|сколько|можешь|можете|расскажи|расскажите|объясни|объясните|what|why|how|when|where|who|which|can you|could you|tell me|explain|do you|have you)\b/i;
-  const SELF_RE = /^(you|вы|я)$/i;
+  // Как только собеседник замолчал (пауза ~2.5 c) и сказал что-то новое, отправляем
+  // новые реплики Claude. Он сам решает, нужен ли ответ, и если нет — молчит ([SKIP]).
+  const SELF_RE = /^(you|вы|я|me)$/i;
+  const AUTO_PAUSE_MS = 2500;
+  const AUTO_MIN_GAP_MS = 6000;
   let autoTimer = null;
   let lastAutoAt = 0;
-  let lastAutoLine = null;
+  let autoBusy = false;
+  const autoSeen = new Map(); // line -> сколько символов этой реплики уже отправили
 
   function onLineChanged(line) {
-    if (!settings.autoMode) return;
+    if (!settings.autoMode || SELF_RE.test(line.speaker)) return;
+    scheduleAuto(AUTO_PAUSE_MS);
+  }
+
+  function scheduleAuto(delay) {
     clearTimeout(autoTimer);
-    autoTimer = setTimeout(() => {
-      // Реплика «устоялась» 2 секунды — проверяем, похоже ли это на вопрос ко мне.
-      if (line === lastAutoLine || SELF_RE.test(line.speaker)) return;
-      const sentences = line.text.split(/(?<=[.!?])\s+/);
-      const tail = sentences.slice(-2).join(" ");
-      if (!QUESTION_RE.test(tail.trim()) && !/\?/.test(tail)) return;
-      if (Date.now() - lastAutoAt < 12000 || busy) return;
-      lastAutoAt = Date.now();
-      lastAutoLine = line;
-      ask({ task: "hint", label: "🤖 Авто: вопрос от " + line.speaker });
-    }, 2000);
+    autoTimer = setTimeout(runAuto, delay);
+  }
+
+  function collectNewSpeech() {
+    const parts = [];
+    for (const l of lines) {
+      const seen = autoSeen.get(l) || 0;
+      if (l.text.length <= seen) continue;
+      // Свои реплики тоже даём для контекста, но триггерят проверку только чужие.
+      parts.push({ line: l, other: !SELF_RE.test(l.speaker), text: l.text.slice(seen).trim() });
+    }
+    return parts;
+  }
+
+  function runAuto() {
+    if (!settings.autoMode) return;
+    if (autoBusy) return scheduleAuto(1000);
+    const wait = AUTO_MIN_GAP_MS - (Date.now() - lastAutoAt);
+    if (wait > 0) return scheduleAuto(wait);
+    const parts = collectNewSpeech();
+    const otherChars = parts.filter((p) => p.other).reduce((n, p) => n + p.text.length, 0);
+    if (otherChars < 12) return;
+    for (const p of parts) autoSeen.set(p.line, p.line.text.length);
+    const recent = parts.map((p) => `${p.line.speaker}: ${p.text}`).join("\n");
+    const who = [...new Set(parts.filter((p) => p.other).map((p) => p.line.speaker))].join(", ");
+    lastAutoAt = Date.now();
+    autoBusy = true;
+    ask({ task: "auto", recent, label: "🤖 " + who, onEnd: () => { autoBusy = false; } });
   }
 
   // --------------------------------------------------------- Скриншот видео
@@ -135,61 +159,89 @@ function main() {
 
   // ------------------------------------------------------------ Связь с Claude
   let port = null;
-  let busy = false;
   let reqSeq = 0;
+  let companionOn = false;
+  let contextDead = false;
   const handlers = new Map();
 
   function getPort() {
     if (port) return port;
+    if (contextDead || !chrome.runtime?.id) { contextDead = true; throw new Error("context invalidated"); }
     port = chrome.runtime.connect({ name: "claude" });
-    port.onMessage.addListener((m) => handlers.get(m.id)?.(m));
+    port.onMessage.addListener((m) => {
+      if (m.type === "companion") { companionOn = m.connected; updateStatus(); return; }
+      handlers.get(m.id)?.(m);
+    });
     port.onDisconnect.addListener(() => {
       port = null;
       for (const h of handlers.values()) h({ type: "error", text: "Соединение с расширением прервано, повтори запрос." });
       handlers.clear();
+      // Service worker мог уснуть — переподключаемся, чтобы не терять связь с окном-компаньоном.
+      setTimeout(() => { try { getPort(); } catch {} }, 1000);
     });
     return port;
   }
+  // Держим связь живой, пока открыт Мит.
+  setInterval(() => { try { getPort().postMessage({ type: "ping" }); } catch {} }, 20000);
 
-  function ask({ task, question, withScreen, label }) {
+  function ask({ task, question, withScreen, label, recent, onEnd }) {
     let image = null;
     if (withScreen) {
       try { image = captureVideoFrame(); } catch (e) { image = null; }
-      if (!image) { showNotice("Не нашёл видео на экране для снимка."); return; }
+      if (!image) { showNotice("Не нашёл видео на экране для снимка."); onEnd?.(); return; }
     }
     const id = ++reqSeq;
-    const card = addCard(label || question || "Подсказка", () => {
+    const title = label || question || "Подсказка";
+    const card = addCard(title, () => {
       try { getPort().postMessage({ type: "abort", id }); } catch {}
-    });
+    }, task === "auto");
     let text = "";
-    busy = true;
-    setBusy(true);
+    const end = () => { handlers.delete(id); updateBusy(); onEnd?.(); };
     handlers.set(id, (m) => {
-      if (m.type === "delta") {
-        text += m.text;
-        card.setBody(text);
-      } else {
-        handlers.delete(id);
-        busy = handlers.size > 0;
-        setBusy(busy);
+      if (m.type === "show") card.show();
+      else if (m.type === "skip") { card.remove(); end(); }
+      else if (m.type === "delta") { text += m.text; card.setBody(text); }
+      else {
         if (m.type === "error") card.setError(m.text);
         card.finish();
+        end();
       }
     });
+    updateBusy();
     try {
-      getPort().postMessage({ type: "ask", id, task, question, transcript: transcriptText(), image });
+      getPort().postMessage({ type: "ask", id, task, question, label: title, recent, transcript: transcriptText(), image });
     } catch (e) {
-      port = null;
+      card.show();
       handlers.get(id)?.({ type: "error", text: "Расширение было обновлено — перезагрузи вкладку Мита." });
     }
   }
 
   // ----------------------------------------------------------------- Настройки
-  const settings = { autoMode: false };
-  chrome.storage.local.get(["autoMode"]).then((s) => { settings.autoMode = !!s.autoMode; syncAutoBox(); });
-  chrome.storage.onChanged.addListener((ch) => {
-    if (ch.autoMode) { settings.autoMode = !!ch.autoMode.newValue; syncAutoBox(); }
+  const settings = { autoMode: true, hideWhilePresenting: true };
+  chrome.storage.local.get(Object.keys(settings)).then((s) => {
+    Object.assign(settings, s);
+    syncAutoBox();
+    applyVisibility();
   });
+  chrome.storage.onChanged.addListener((ch) => {
+    for (const k of Object.keys(settings)) if (ch[k]) settings[k] = ch[k].newValue;
+    syncAutoBox();
+    applyVisibility();
+  });
+
+  // ------------------------------------------------- Демонстрация экрана
+  // page-hook.js (в контексте страницы) сообщает, когда идёт показ экрана.
+  let presenting = false;
+  window.addEventListener("message", (e) => {
+    if (e.source !== window || e.data?.source !== "meet-assistant" || e.data.type !== "presenting") return;
+    presenting = !!e.data.value;
+    applyVisibility();
+  });
+  function applyVisibility() {
+    if (typeof host === "undefined") return;
+    // display:none — панели физически нет на странице, в трансляцию она попасть не может.
+    host.style.display = presenting && settings.hideWhilePresenting ? "none" : "";
+  }
 
   // ------------------------------------------------------------------- UI
   const host = document.createElement("div");
@@ -209,12 +261,14 @@ function main() {
 
   const statusDot = el("span", { className: "dot" });
   const statusText = el("span", { className: "status", textContent: "Субтитры выключены" });
+  const companionBadge = el("span", { className: "badge hidden", textContent: "🖥 окно",
+    title: "Подсказки дублируются в отдельное окно, невидимое при демонстрации экрана" });
   const autoBox = el("input", { type: "checkbox" });
   const collapseBtn = el("button", { className: "icon", title: "Свернуть (Alt+M)", textContent: "▁" });
   const header = el("div", { className: "header" },
-    el("span", { className: "title", textContent: "✳ Claude" }), statusDot, statusText,
+    el("span", { className: "title", textContent: "✳ Claude" }), statusDot, statusText, companionBadge,
     el("span", { className: "spacer" }),
-    el("label", { className: "auto", title: "Автоматически отвечать, когда тебе задают вопрос" }, autoBox, " авто"),
+    el("label", { className: "auto", title: "Claude сам слушает и подсказывает, когда тебе задают вопрос" }, autoBox, " авто"),
     collapseBtn);
 
   const cards = el("div", { className: "cards" });
@@ -277,13 +331,20 @@ function main() {
     addEventListener("mouseup", up);
   });
 
+  let captionsOn = false;
   function setCaptionStatus(on) {
-    statusDot.classList.toggle("on", on);
-    statusText.textContent = on ? `Слушаю · ${lines.length} реплик` : "Субтитры выключены — нажми CC";
-    ccBtn.classList.toggle("hidden", on);
+    captionsOn = on;
+    updateStatus();
+  }
+  function updateStatus() {
+    if (typeof statusDot === "undefined") return;
+    statusDot.classList.toggle("on", captionsOn);
+    statusText.textContent = captionsOn ? `Слушаю · ${lines.length} реплик` : "Включаю субтитры…";
+    ccBtn.classList.toggle("hidden", captionsOn);
+    companionBadge.classList.toggle("hidden", !companionOn);
   }
 
-  function setBusy(b) { panel.classList.toggle("busy", b); }
+  function updateBusy() { panel.classList.toggle("busy", handlers.size > 0); }
 
   function showNotice(text) {
     const c = addCard("ℹ️", null);
@@ -291,7 +352,7 @@ function main() {
     c.finish();
   }
 
-  function addCard(title, onStop) {
+  function addCard(title, onStop, hidden = false) {
     const stop = el("button", { className: "icon", title: "Остановить", textContent: "■" });
     const close = el("button", { className: "icon", title: "Убрать", textContent: "✕" });
     const content = el("div", { className: "content" }, el("span", { className: "typing", textContent: "думаю…" }));
@@ -301,9 +362,12 @@ function main() {
     stop.onclick = () => onStop?.();
     if (!onStop) stop.remove();
     close.onclick = () => card.remove();
+    if (hidden) card.classList.add("hidden");
     cards.prepend(card);
     while (cards.children.length > 15) cards.lastElementChild.remove();
     return {
+      show() { card.classList.remove("hidden"); },
+      remove() { card.remove(); },
       setBody(text) { content.replaceChildren(...renderMarkdown(text)); },
       setError(text) { content.replaceChildren(el("div", { className: "error", textContent: text })); },
       finish() {
@@ -360,11 +424,11 @@ function main() {
   new MutationObserver(renderTranscript).observe(transcriptBox, { attributes: true, attributeFilter: ["class"] });
 
   // Пытаемся включить субтитры, когда пользователь зашёл во встречу.
-  let ccTries = 0;
-  const ccTimer = setInterval(() => {
-    if (findCaptionRegion() || ++ccTries > 60) return clearInterval(ccTimer);
-    tryEnableCaptions();
-  }, 3000);
+  // Субтитры — это «уши» ассистента, поэтому держим их включёнными всё время звонка.
+  setInterval(() => { if (!findCaptionRegion()) tryEnableCaptions(); }, 4000);
+  applyVisibility();
+  updateStatus();
+  try { getPort(); } catch {}
   scanCaptions();
 }
 
@@ -381,6 +445,7 @@ var CSS = `
 .busy .dot.on { animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 .status { color: #9aa0a6; font-size: 12px; }
+.badge { color: #8ab4f8; font-size: 12px; }
 .spacer { flex: 1; }
 .auto { color: #bdc1c6; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
 button { font: inherit; color: #e8eaed; background: #3c4043; border: 1px solid #5f6368; border-radius: 8px;

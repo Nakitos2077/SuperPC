@@ -5,7 +5,8 @@ export const DEFAULTS = {
   effort: "low", // для живых подсказок важна скорость; можно поднять в настройках
   language: "русском",
   context: "",
-  autoMode: false,
+  autoMode: true, // Claude сам слушает и подсказывает — ничего вводить не нужно
+  hideWhilePresenting: true,
   transcriptChars: 15000,
 };
 

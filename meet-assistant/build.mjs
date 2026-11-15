@@ -11,6 +11,7 @@ const options = {
   entryPoints: {
     background: "src/background.js",
     content: "src/content.js",
+    "page-hook": "src/page-hook.js",
     options: "src/options.js",
   },
   outdir: "dist",

@@ -1,0 +1,16 @@
+{
+  "name": "meet-assistant-overlay",
+  "version": "1.0.0",
+  "description": "Окно подсказок Meet Assistant, невидимое для демонстрации экрана",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "electron": "^45.3.2"
+  },
+  "private": true
+}

@@ -1,13 +1,11 @@
-// Service worker: принимает запросы из вкладки Мита и стримит ответы Claude обратно.
+// Service worker: принимает запросы из вкладки Мита, стримит ответы Claude обратно
+// и дублирует их в окно-компаньон (невидимое для демонстрации экрана), если оно запущено.
 import Anthropic from "@anthropic-ai/sdk";
 import { loadSettings } from "./settings.js";
 
 // Модели, для которых доступен серверный fallback при отказе (refusal).
-const FALLBACK_MODELS = new Set([
-  "claude-opus-5-5",
-  "claude-sonnet-5-5",
-  "claude-fable-5-2",
-]);
+const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2"]);
+const SKIP = "[SKIP]";
 
 const TASKS = {
   hint:
@@ -21,6 +19,17 @@ const TASKS = {
     "Опиши, что там важного, и свяжи это с тем, что обсуждают. Если там вопрос/задача — помоги её решить.",
 };
 
+function autoTask(recent) {
+  return (
+    "Ты работаешь в авто-режиме: я ничего не спрашиваю, ты сам следишь за разговором.\n" +
+    "Новые реплики с прошлой проверки:\n<new>\n" + recent + "\n</new>\n\n" +
+    "Если в новых репликах мне (пользователю) задали вопрос, о чём-то попросили, ждут моего ответа, " +
+    "мнения или решения — сразу дай готовый ответ, который я могу сказать вслух (2–5 предложений), " +
+    "и при необходимости 1–3 ключевых пункта. Не повторяй подсказки, которые уже были бы уместны раньше.\n" +
+    "Если от меня сейчас ничего не требуется — ответь ровно " + SKIP + " и больше ничего."
+  );
+}
+
 function buildSystem(s) {
   return (
     "Ты — незаметный ассистент пользователя на созвоне в Google Meet. Тебе передают живую " +
@@ -33,16 +42,16 @@ function buildSystem(s) {
   );
 }
 
-function buildUserContent({ task, question, transcript, image }, s) {
+function buildUserContent({ task, question, transcript, recent, image }, s) {
   const tail = transcript.length > s.transcriptChars
     ? "…(начало опущено)\n" + transcript.slice(-s.transcriptChars)
     : transcript;
   const parts = [];
-  if (image) {
-    parts.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } });
-  }
+  if (image) parts.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } });
   let text = "<transcript>\n" + (tail || "(расшифровка пока пустая)") + "\n</transcript>\n\n";
-  text += question ? "Мой вопрос: " + question : TASKS[task] || TASKS.hint;
+  if (question) text += "Мой вопрос: " + question;
+  else if (task === "auto") text += autoTask(recent || "");
+  else text += TASKS[task] || TASKS.hint;
   parts.push({ type: "text", text });
   return parts;
 }
@@ -58,29 +67,77 @@ function errorText(err) {
   return String(err?.message || err);
 }
 
+// ------------------------------------------------------------ Окно-компаньон
+const COMPANION_URL = "ws://127.0.0.1:47823";
+const ports = new Set();
+let ws = null;
+
+function companionConnected() { return ws?.readyState === WebSocket.OPEN; }
+
+function broadcastCompanion() {
+  for (const p of ports) { try { p.postMessage({ type: "companion", connected: companionConnected() }); } catch {} }
+}
+
+function connectCompanion() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+  try {
+    ws = new WebSocket(COMPANION_URL);
+    ws.onopen = broadcastCompanion;
+    ws.onclose = () => { ws = null; broadcastCompanion(); };
+    ws.onerror = () => {};
+  } catch { ws = null; }
+}
+
+function toCompanion(msg) {
+  if (companionConnected()) { try { ws.send(JSON.stringify(msg)); } catch {} }
+}
+
+// Пока открыта вкладка Мита — периодически пытаемся подключиться к окну.
+setInterval(() => {
+  if (!ports.size) return;
+  connectCompanion();
+  toCompanion({ type: "ping" });
+}, 5000);
+
+// ------------------------------------------------------------------ Запросы
+let keySeq = 0;
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "claude") return;
+  ports.add(port);
+  connectCompanion();
+  port.postMessage({ type: "companion", connected: companionConnected() });
   const active = new Map(); // id -> stream
 
   port.onDisconnect.addListener(() => {
+    ports.delete(port);
     for (const st of active.values()) st.abort();
     active.clear();
   });
 
   port.onMessage.addListener(async (msg) => {
-    if (msg.type === "abort") {
-      active.get(msg.id)?.abort();
-      return;
-    }
+    if (msg.type === "abort") { active.get(msg.id)?.abort(); return; }
     if (msg.type !== "ask") return;
     const { id } = msg;
+    const key = `${Date.now()}-${++keySeq}`;
+    const isAuto = msg.task === "auto";
     const send = (m) => { try { port.postMessage({ id, ...m }); } catch {} };
+    let shown = false;
+    const show = () => {
+      if (shown) return;
+      shown = true;
+      send({ type: "show" });
+      toCompanion({ type: "start", key, title: msg.label });
+    };
+    const out = (m) => { send(m); toCompanion({ key, ...m }); };
 
     const s = await loadSettings();
     if (!s.apiKey) {
-      send({ type: "error", text: "Не задан API-ключ Anthropic. Открой настройки расширения (иконка на панели)." });
+      show();
+      out({ type: "error", text: "Не задан API-ключ Anthropic. Открой настройки расширения (иконка на панели)." });
       return;
     }
+    if (!isAuto) show();
 
     const client = new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true });
     const params = {
@@ -95,19 +152,31 @@ chrome.runtime.onConnect.addListener((port) => {
       params.fallbacks = "default";
     }
 
+    // В авто-режиме сначала копим начало ответа: если это [SKIP] — карточку не показываем.
+    let pending = "";
+    let skipped = false;
     try {
       const stream = client.beta.messages.stream(params);
       active.set(id, stream);
-      stream.on("text", (delta) => send({ type: "delta", text: delta }));
+      stream.on("text", (delta) => {
+        if (skipped) return;
+        if (shown) { out({ type: "delta", text: delta }); return; }
+        pending += delta;
+        const head = pending.trimStart();
+        if (head.length < SKIP.length && SKIP.startsWith(head)) return; // пока не ясно
+        if (head.startsWith(SKIP)) { skipped = true; stream.abort(); return; }
+        show();
+        out({ type: "delta", text: head });
+      });
       const final = await stream.finalMessage();
-      if (final.stop_reason === "refusal") {
-        send({ type: "error", text: "Модель отказалась отвечать на этот запрос." });
-      } else {
-        send({ type: "done", stopReason: final.stop_reason });
-      }
+      if (!shown) { send({ type: "skip" }); return; }
+      if (final.stop_reason === "refusal") out({ type: "error", text: "Модель отказалась отвечать на этот запрос." });
+      else out({ type: "done" });
     } catch (err) {
-      const text = errorText(err);
-      send(text ? { type: "error", text } : { type: "done", stopReason: "aborted" });
+      const text = skipped ? null : errorText(err);
+      if (!shown && !text) { send({ type: "skip" }); return; }
+      if (text) { show(); out({ type: "error", text }); }
+      else out({ type: "done" });
     } finally {
       active.delete(id);
     }
