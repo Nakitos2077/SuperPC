@@ -195,6 +195,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
   port.onMessage.addListener(async (msg) => {
     if (msg.type === "abort") { active.get(msg.id)?.abort(); return; }
+    if (msg.type === "heard") { toCompanion({ type: "heard", text: String(msg.text || "") }); return; }
     if (msg.type !== "ask") return;
     const { id } = msg;
     const key = `${Date.now()}-${++keySeq}`;

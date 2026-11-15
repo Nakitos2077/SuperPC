@@ -34,6 +34,7 @@ window.overlay.onHint((m) => {
     cardsBox.prepend(el("div", { className: "card" }, el("div", { className: "error", textContent: m.text })));
     return;
   }
+  if (m.type === "heard") { $("heard").textContent = m.text; return; }
   if (m.type === "start") { getCard(m.key, m.title, !!m.drawable); return; }
   const c = cards.get(m.key);
   if (!c) return;

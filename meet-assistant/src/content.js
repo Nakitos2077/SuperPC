@@ -109,6 +109,8 @@ function main() {
         updateStatus();
         renderTranscript();
       }
+      // Распознавание сообщило, что фраза закончена, — не ждём паузу.
+      if (m.final && settings.autoMode && triggers(line.speaker)) scheduleAuto(AUTO_FINAL_MS);
     } else if (m.type === "speech-status") {
       speechInfo = m;
       updateStatus();
@@ -184,8 +186,9 @@ function main() {
   const SELF_RE = /^(you|вы|я|me)$/i;
   // Чья речь запускает проверку: чужая всегда, своя — если включено «реагировать на мой голос».
   const triggers = (speaker) => !SELF_RE.test(speaker) || settings.autoOnMyVoice;
-  const AUTO_PAUSE_MS = 2500;
-  const AUTO_MIN_GAP_MS = 6000;
+  const AUTO_PAUSE_MS = 1200;   // пауза после фразы (если распознавание не сообщило, что фраза закончена)
+  const AUTO_FINAL_MS = 300;    // фраза закончена (итог распознавания) — отправляем почти сразу
+  const AUTO_MIN_GAP_MS = 3000;
   let autoTimer = null;
   let lastAutoAt = 0;
   let autoBusy = false;
@@ -207,6 +210,7 @@ function main() {
   }
 
   function onLineChanged(line) {
+    showHeard(line);
     if (!settings.autoMode || !triggers(line.speaker)) return;
     scheduleAuto(AUTO_PAUSE_MS);
   }
@@ -245,13 +249,42 @@ function main() {
     const who = [...new Set(parts.filter((p) => p.other).map((p) => p.line.speaker))].join(", ");
     lastAutoAt = Date.now();
     autoBusy = true;
+    setThinking(true);
     ask({
       task: "auto", recent, label: "🤖 " + who, previous: autoAnswers.slice(-3),
       onEnd: (answer) => {
         autoBusy = false;
+        setThinking(false);
         if (answer) { autoAnswers.push(answer.slice(0, 400)); if (autoAnswers.length > 5) autoAnswers.shift(); }
       },
     });
+  }
+
+  // ------------------------------------------- Строка «услышал» / «думаю»
+  // Показывает последнюю услышанную фразу и что Claude уже думает — чтобы не повторять вопрос.
+  let heardText = "";
+  let thinking = false;
+  let relayTimer = null;
+  let lastRelayed = "";
+
+  function showHeard(line) {
+    const t = line.text.trim();
+    heardText = `${line.speaker}: ${t.length > 140 ? "…" + t.slice(-140) : t}`;
+    renderHeard();
+  }
+  function setThinking(on) { thinking = on; renderHeard(); }
+  function renderHeard() {
+    const text = heardText ? (thinking ? "⏳ Claude думает · " : "🎙 ") + heardText : "";
+    if (typeof heardBox !== "undefined") heardBox.textContent = text;
+    // Дублируем в окно-компаньон (не чаще раза в 300 мс).
+    if (relayTimer) return;
+    relayTimer = setTimeout(() => {
+      relayTimer = null;
+      const now = heardBox.textContent;
+      if (now === lastRelayed) return;
+      lastRelayed = now;
+      try { getPort().postMessage({ type: "heard", text: now }); } catch {}
+    }, 300);
   }
 
   // --------------------------------------------------------- Скриншот видео
@@ -434,7 +467,8 @@ function main() {
     btn("📜", "Показать/скрыть расшифровку", () => transcriptBox.classList.toggle("hidden")),
     ccBtn);
   const diagLine = el("div", { className: "diag" });
-  const body = el("div", { className: "body" }, diagLine, toolbar, el("div", { className: "row" }, input), cards, transcriptBox);
+  const heardBox = el("div", { className: "heard" });
+  const body = el("div", { className: "body" }, diagLine, toolbar, el("div", { className: "row" }, input), heardBox, cards, transcriptBox);
   const panel = el("div", { className: "panel" }, header, body);
   root.append(panel);
   document.documentElement.append(host);
@@ -609,6 +643,8 @@ var CSS = `
 @keyframes pulse { 50% { opacity: .3; } }
 .status { color: #9aa0a6; font-size: 12px; }
 .diag { color: #80868b; font-size: 11px; }
+.heard { color: #bdc1c6; font-size: 12px; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.heard:empty { display: none; }
 .diag:empty { display: none; }
 .badge { color: #8ab4f8; font-size: 12px; }
 .spacer { flex: 1; }
