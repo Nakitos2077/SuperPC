@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Meet Assistant — настройки</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; max-width: 640px; margin: 32px auto; padding: 0 16px; color: #202124; }
+  h1 { font-size: 20px; }
+  label { display: block; margin: 16px 0 4px; font-weight: 600; }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    width: 100%; box-sizing: border-box; padding: 8px; font: inherit; border: 1px solid #ccc; border-radius: 8px; }
+  textarea { min-height: 110px; }
+  .hint { color: #5f6368; font-size: 12px; font-weight: normal; }
+  .check { display: flex; gap: 8px; align-items: center; font-weight: normal; }
+  button { margin-top: 20px; padding: 8px 20px; font: inherit; border: 0; border-radius: 8px; background: #1a73e8; color: #fff; cursor: pointer; }
+  #saved { margin-left: 12px; color: #188038; }
+</style>
+</head>
+<body>
+<h1>✳ Meet Assistant — настройки</h1>
+
+<label for="apiKey">API-ключ Anthropic</label>
+<input id="apiKey" type="password" placeholder="sk-ant-...">
+<div class="hint">Ключ создаётся на console.anthropic.com → API Keys. Хранится только локально в этом браузере.</div>
+
+<label for="model">Модель</label>
+<select id="model">
+  <option value="claude-opus-5-5">Claude Opus 5.5 (по умолчанию)</option>
+  <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (быстрее, дешевле)</option>
+  <option value="claude-haiku-5-5">Claude Haiku 5.5 (самая быстрая)</option>
+  <option value="claude-fable-5-2">Claude Fable 5.2 (самая умная, дорогая)</option>
+</select>
+
+<label for="effort">Глубина размышления (effort)</label>
+<select id="effort">
+  <option value="low">low — быстрые подсказки</option>
+  <option value="medium">medium</option>
+  <option value="high">high — медленнее, но тщательнее</option>
+</select>
+
+<label for="language">Язык ответов</label>
+<select id="language">
+  <option value="русском">Русский</option>
+  <option value="английском">English</option>
+  <option value="украинском">Українська</option>
+  <option value="том же, на котором идёт разговор">Как в разговоре</option>
+</select>
+
+<label for="context">Контекст встречи <span class="hint">(необязательно)</span></label>
+<textarea id="context" placeholder="Например: Я — frontend-разработчик, это собеседование в компанию X на позицию Senior React. Подсказывай технические ответы."></textarea>
+
+<label for="transcriptChars">Сколько последних символов расшифровки отправлять</label>
+<input id="transcriptChars" type="number" min="2000" max="200000" step="1000">
+<div class="hint">Больше — лучше контекст длинной встречи, но дороже и медленнее.</div>
+
+<label class="check"><input id="autoMode" type="checkbox"> Авто-режим: сам отвечать, когда мне задают вопрос</label>
+
+<button id="save">Сохранить</button><span id="saved"></span>
+
+<script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "meet-assistant",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "private": "true",
+  "type": "module"
+}
