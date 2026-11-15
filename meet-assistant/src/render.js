@@ -59,13 +59,14 @@ function splitBlocks(src) {
 
 function inline(text) {
   const nodes = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|\\\((.+?)\\\)|\$(?!\s)([^$\n]+?)(?<!\s)\$)/g;
+  const re = /(\*\*[^*]+\*\*|`[^`]+`|\\\((.+?)\\\)|\$(?!\s)([^$\n]+?)(?<!\s)\$|\*(?!\s)([^*\n]+?)(?<!\s)\*)/g;
   let last = 0, m;
   while ((m = re.exec(text))) {
     if (m.index > last) nodes.push(text.slice(last, m.index));
     const tok = m[0];
     if (tok.startsWith("**")) nodes.push(el("b", { textContent: tok.slice(2, -2) }));
     else if (tok.startsWith("`")) nodes.push(el("code", { textContent: tok.slice(1, -1) }));
+    else if (m[4] !== undefined) nodes.push(el("i", {}, ...inline(m[4]))); // *курсив* (внутри может быть формула)
     else nodes.push(mathNode(m[2] ?? m[3], false));
     last = m.index + tok.length;
   }
