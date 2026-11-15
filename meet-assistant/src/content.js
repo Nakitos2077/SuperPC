@@ -412,7 +412,8 @@ function main() {
     btn("📸 Экран", "Снимок демонстрации/видео + анализ", () => ask({ task: "screen", withScreen: true, label: "📸 Что на экране" })),
     btn("📜", "Показать/скрыть расшифровку", () => transcriptBox.classList.toggle("hidden")),
     ccBtn);
-  const body = el("div", { className: "body" }, toolbar, el("div", { className: "row" }, input), cards, transcriptBox);
+  const diagLine = el("div", { className: "diag" });
+  const body = el("div", { className: "body" }, diagLine, toolbar, el("div", { className: "row" }, input), cards, transcriptBox);
   const panel = el("div", { className: "panel" }, header, body);
   root.append(panel);
   document.documentElement.append(host);
@@ -490,7 +491,15 @@ function main() {
       else if (speechError) text = "🎙 Ошибка: " + speechError;
       else if (!sources) text = "🎙 Жду звук встречи…";
       else text = `🎙 Слушаю звук · ${spoken} фраз` + (speechInfo.trackInput ? "" : " (только микрофон — обнови Chrome)");
+      // Диагностика: что именно найдено (видно при наведении на статус и в строке ниже).
+      if (speechInfo?.supported) {
+        statusText.title = `Chrome ${speechInfo.chromeVer} · микрофон: ${speechInfo.micSource} · ` +
+          `собеседников найдено: ${speechInfo.remotesFound} · распознавателей: ${speechInfo.listening}` +
+          (speechInfo.lastError ? ` · ошибка: ${speechInfo.lastError}` : "");
+        diagLine.textContent = "🔧 " + statusText.title;
+      }
     } else {
+      diagLine.textContent = "";
       on = captionsOn;
       text = captionsOn ? `Слушаю · ${spoken} реплик` : "Включаю субтитры…";
     }
@@ -578,6 +587,8 @@ var CSS = `
 .busy .dot.on { animation: pulse 1s infinite; }
 @keyframes pulse { 50% { opacity: .3; } }
 .status { color: #9aa0a6; font-size: 12px; }
+.diag { color: #80868b; font-size: 11px; }
+.diag:empty { display: none; }
 .badge { color: #8ab4f8; font-size: 12px; }
 .spacer { flex: 1; }
 .auto { color: #bdc1c6; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; }

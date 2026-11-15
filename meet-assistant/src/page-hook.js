@@ -57,6 +57,10 @@
   const remotes = new Set(); // входящие дорожки собеседников
   const sessions = new Map(); // track -> распознаватель
   let enabled = false;
+  let enabledAt = 0;
+  let lastError = "";
+  // Запасной вариант: если микрофон Мита перехватить не удалось — слушаем микрофон по умолчанию.
+  const DEFAULT_MIC = { id: "default-mic", readyState: "live" };
   let lang = "uk-UA";
   let seq = 0;
 
@@ -105,8 +109,10 @@
         if (r.isFinal) s.utt = null;
       }
     };
+    const start = () => (trackInput && track !== DEFAULT_MIC ? rec.start(track) : rec.start());
     rec.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
+      lastError = e.error;
       post({ type: "speech-error", who, error: e.error });
       if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "language-not-supported") s.stopped = true;
     };
@@ -114,13 +120,14 @@
     rec.onend = () => {
       s.utt = null;
       if (s.stopped || !enabled || track.readyState !== "live") { sessions.delete(track); return; }
-      setTimeout(() => { try { trackInput ? rec.start(track) : rec.start(); } catch { sessions.delete(track); } }, 250);
+      setTimeout(() => { try { start(); } catch { sessions.delete(track); } }, 250);
     };
     try {
-      trackInput ? rec.start(track) : rec.start();
+      start();
     } catch (err) {
       sessions.delete(track);
-      post({ type: "speech-error", who, error: String(err?.message || err) });
+      lastError = String(err?.message || err);
+      post({ type: "speech-error", who, error: lastError });
     }
   }
 
@@ -132,6 +139,12 @@
   function sync() {
     if (!enabled || !getSR()) return;
     for (const t of [...mics]) if (t.readyState !== "live") mics.delete(t);
+    // Ещё один источник голосов собеседников — аудио/видео-плееры страницы Мита.
+    for (const m of document.querySelectorAll("audio, video")) {
+      const so = m.srcObject;
+      if (!(so instanceof MediaStream)) continue;
+      for (const t of so.getAudioTracks()) if (!mics.has(t)) remotes.add(t);
+    }
     for (const t of [...remotes]) if (t.readyState !== "live") remotes.delete(t);
     // Свой голос: последняя живая дорожка микрофона (без поддержки дорожек — просто микрофон).
     const mic = [...mics].pop();
@@ -141,10 +154,18 @@
       const old = sessions.get(t);
       if (old) { old.stopped = true; try { old.rec.abort(); } catch {} sessions.delete(t); }
     }
-    if (mic) listen(mic, "self");
+    if (mic) {
+      const def = sessions.get(DEFAULT_MIC);
+      if (def) { def.stopped = true; try { def.rec.abort(); } catch {} sessions.delete(DEFAULT_MIC); }
+      listen(mic, "self");
+    } else if (Date.now() - enabledAt > 4000) {
+      listen(DEFAULT_MIC, "self");
+    }
     // Голоса собеседников — только если браузер умеет слушать дорожку.
     if (trackInput) for (const t of remotes) listen(t, "other");
-    post({ type: "speech-status", supported: true, trackInput, mics: mic ? 1 : 0, remotes: trackInput ? remotes.size : 0 });
+    post({ type: "speech-status", supported: true, trackInput, chromeVer,
+      mics: mic || sessions.has(DEFAULT_MIC) ? 1 : 0, micSource: mic ? "meet" : sessions.has(DEFAULT_MIC) ? "default" : "none",
+      remotes: trackInput ? remotes.size : 0, remotesFound: remotes.size, listening: sessions.size, lastError });
   }
 
   window.addEventListener("message", (e) => {
@@ -155,6 +176,7 @@
       lang = e.data.lang || lang;
       if (!getSR()) { post({ type: "speech-status", supported: false }); return; }
       if (!want || langChanged) stopAll();
+      if (want && !enabled) enabledAt = Date.now();
       enabled = want;
       sync();
     }
