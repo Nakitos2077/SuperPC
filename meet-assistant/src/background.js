@@ -150,10 +150,55 @@ setInterval(() => {
 // ------------------------------------------------------------------ Запросы
 let keySeq = 0;
 
+// Общая часть запроса: модель, настройки и всё, что кэшируется (system + презентации).
+function baseParams(s, materials) {
+  const params = {
+    model: s.model,
+    output_config: { effort: s.effort },
+    system: buildSystem(s, materials),
+  };
+  if (FALLBACK_MODELS.has(s.model)) {
+    params.betas = ["server-side-fallback-2026-07-01"];
+    params.fallbacks = "default";
+  }
+  return params;
+}
+
+// ---------------------------------------------------- Прогрев кэша презентаций
+// Пока открыт Мит, заранее кладём презентации в кэш Claude (запрос с max_tokens: 0 — ответа нет,
+// платится только запись в кэш). Тогда даже первый вопрос не ждёт, пока прочитаются все слайды.
+// Кэш живёт 5 минут с последнего использования, поэтому обновляем его, если вопросов не было ~4 мин.
+const WARM_EVERY_MS = 4 * 60 * 1000;
+let lastCacheUse = 0;
+let warming = false;
+
+async function prewarm() {
+  if (warming || !ports.size || Date.now() - lastCacheUse < WARM_EVERY_MS) return;
+  warming = true;
+  try {
+    const s = await loadSettings();
+    const materials = await loadMaterials();
+    if (!s.apiKey || !materials.length) return;
+    const client = new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true });
+    await client.beta.messages.create({
+      ...baseParams(s, materials),
+      max_tokens: 0,
+      messages: [{ role: "user", content: [...materialBlocks(materials), { type: "text", text: "warmup" }] }],
+    });
+    lastCacheUse = Date.now();
+  } catch {
+    // Прогрев — необязательная оптимизация; при ошибке настоящий вопрос просто запишет кэш сам.
+  } finally {
+    warming = false;
+  }
+}
+setInterval(prewarm, 30 * 1000);
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "claude") return;
   ports.add(port);
   connectCompanion();
+  prewarm();
   port.postMessage({ type: "companion", connected: companionConnected() });
   const active = new Map(); // id -> stream
 
@@ -190,16 +235,11 @@ chrome.runtime.onConnect.addListener((port) => {
     const materials = await loadMaterials();
     const client = new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true });
     const params = {
-      model: s.model,
+      ...baseParams(s, materials),
       max_tokens: 8000,
-      output_config: { effort: s.effort },
-      system: buildSystem(s, materials),
       messages: [{ role: "user", content: buildUserContent(msg, s, materials) }],
     };
-    if (FALLBACK_MODELS.has(s.model)) {
-      params.betas = ["server-side-fallback-2026-07-01"];
-      params.fallbacks = "default";
-    }
+    if (materials.length) lastCacheUse = Date.now();
 
     // В авто-режиме сначала копим начало ответа: если это [SKIP] — карточку не показываем.
     let pending = "";
