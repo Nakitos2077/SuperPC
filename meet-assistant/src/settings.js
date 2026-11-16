@@ -11,6 +11,8 @@ export const DEFAULTS = {
   speechSource: "audio", // "audio" — распознавание звука встречи, "captions" — субтитры Мита
   speechLang: "uk-UA",
   transcriptChars: 15000,
+  materialsOnly: true, // отвечать строго по загруженным презентациям, ничего не добавляя от себя
+  fastMode: true, // максимальная скорость: без «размышлений» модели (Haiku/Sonnet)
 };
 
 export async function loadSettings() {

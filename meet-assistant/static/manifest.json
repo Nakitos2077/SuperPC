@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Meet Assistant (Claude)",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Слушает встречу в Google Meet или Zoom (в браузере) и показывает подсказки Claude поверх вкладки.",
   "permissions": [
-    "storage"
+    "storage",
+    "unlimitedStorage"
   ],
   "host_permissions": [
     "https://meet.google.com/*",

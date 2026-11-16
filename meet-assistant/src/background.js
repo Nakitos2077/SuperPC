@@ -2,6 +2,7 @@
 // и дублирует их в окно-компаньон (невидимое для демонстрации экрана), если оно запущено.
 import Anthropic from "@anthropic-ai/sdk";
 import { loadSettings } from "./settings.js";
+import { loadMaterials, materialBlocks } from "./materials.js";
 
 // Модели, для которых доступен серверный fallback при отказе (refusal).
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2"]);
@@ -60,7 +61,26 @@ function languageRule(s) {
     "или эти инструкции на другом языке. Термины и формулы можно оставлять как есть.";
 }
 
-function buildSystem(s) {
+// Правило про презентации пользователя.
+function materialsRule(s, materials) {
+  if (!materials.length) return "";
+  const list = materials.map((m, i) => `${i + 1} — «${m.name}»`).join(", ");
+  if (s.materialsOnly) {
+    return "\n\nВ начале запроса приложены материалы пользователя (презентации: " + list + ").\n" +
+      "ГЛАВНОЕ ПРАВИЛО, оно важнее всех правил выше: отвечай СТРОГО и ТОЛЬКО по этим материалам. " +
+      "Ничего не добавляй от себя — никаких своих знаний, определений, формул, примеров, выводов и " +
+      "пояснений, которых нет в презентациях. Определения, формулировки и формулы передавай максимально " +
+      "близко к тексту слайдов. Рисунок рисуй только если такой рисунок или схема есть в презентации — " +
+      "тогда воспроизведи его. В конце ответа коротко укажи источник (например: «Презентация 2, слайд 14»). " +
+      "Если ответа в материалах нет — ответь одной фразой, что в презентациях этого нет, и больше ничего.";
+  }
+  return "\n\nВ начале запроса приложены материалы пользователя (презентации: " + list + "). Отвечай в первую " +
+    "очередь по ним: бери определения, формулы, обозначения и формулировки оттуда. В конце ответа коротко укажи " +
+    "источник (например: «Презентация 2, слайд 14»). Если в материалах ответа нет — ответь из своих знаний и " +
+    "пометь это: «(не из презентаций)».";
+}
+
+function buildSystem(s, materials) {
   return (
     "Ты — незаметный ассистент пользователя на созвоне (Google Meet или Zoom). Тебе передают живую " +
     "расшифровку встречи из автоматических субтитров (в ней бывают ошибки распознавания, " +
@@ -90,15 +110,17 @@ function buildSystem(s) {
     "не предоставлен или не дан, и не предлагай нарисовать «за потреби» — сразу рисуй.\n" +
     "• В остальных случаях рисуй, только если ответ заметно понятнее с картинкой (схема, график, " +
     "чертёж, векторы сил, электрическая цепь, геометрия)." +
+    materialsRule(s, materials) +
     (s.context ? "\n\nКонтекст от пользователя (кто он, что за встреча):\n" + s.context : "")
   );
 }
 
-function buildUserContent({ task, question, transcript, recent, image, prev, previous }, s) {
+function buildUserContent({ task, question, transcript, recent, image, prev, previous }, s, materials) {
   const tail = transcript.length > s.transcriptChars
     ? "…(начало опущено)\n" + transcript.slice(-s.transcriptChars)
     : transcript;
-  const parts = [];
+  // Презентации — первыми: это неизменная часть запроса, она кэшируется между вопросами.
+  const parts = materialBlocks(materials);
   if (image) parts.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } });
   let text = "<transcript>\n" + (tail || "(расшифровка пока пустая)") + "\n</transcript>\n\n";
   if (task === "draw") {
@@ -180,10 +202,62 @@ setInterval(() => {
 let keySeq = 0;
 const keyOwners = new Map(); // ключ карточки в окне-компаньоне -> { port, id } запроса во вкладке Мита
 
+// Общая часть запроса: модель, настройки и всё, что кэшируется (system + презентации).
+function baseParams(s, materials) {
+  const params = {
+    model: s.model,
+    output_config: { effort: s.effort },
+    system: buildSystem(s, materials),
+  };
+  // Быстрый режим: модель отвечает сразу, без внутренних «размышлений» (там, где модель это позволяет).
+  // Haiku 5.5 — thinking отключается; Sonnet 5.5 — режим between_tools (без размышлений, инструментов у нас нет);
+  // у Opus 5.5 / Fable размышления не отключаются — там скорость регулирует только effort.
+  if (s.fastMode && s.effort !== "xhigh" && s.effort !== "max") {
+    if (s.model.startsWith("claude-haiku-5-5")) params.thinking = { type: "disabled" };
+    else if (s.model.startsWith("claude-sonnet-5-5")) params.thinking = { type: "between_tools" };
+  }
+  if (FALLBACK_MODELS.has(s.model)) {
+    params.betas = ["server-side-fallback-2026-07-01"];
+    params.fallbacks = "default";
+  }
+  return params;
+}
+
+// ---------------------------------------------------- Прогрев кэша презентаций
+// Пока открыт Мит, заранее кладём презентации в кэш Claude (запрос с max_tokens: 0 — ответа нет,
+// платится только запись в кэш). Тогда даже первый вопрос не ждёт, пока прочитаются все слайды.
+// Кэш живёт 5 минут с последнего использования, поэтому обновляем его, если вопросов не было ~4 мин.
+const WARM_EVERY_MS = 4 * 60 * 1000;
+let lastCacheUse = 0;
+let warming = false;
+
+async function prewarm() {
+  if (warming || !ports.size || Date.now() - lastCacheUse < WARM_EVERY_MS) return;
+  warming = true;
+  try {
+    const s = await loadSettings();
+    const materials = await loadMaterials();
+    if (!s.apiKey || !materials.length) return;
+    const client = new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true });
+    await client.beta.messages.create({
+      ...baseParams(s, materials),
+      max_tokens: 0,
+      messages: [{ role: "user", content: [...materialBlocks(materials), { type: "text", text: "warmup" }] }],
+    });
+    lastCacheUse = Date.now();
+  } catch {
+    // Прогрев — необязательная оптимизация; при ошибке настоящий вопрос просто запишет кэш сам.
+  } finally {
+    warming = false;
+  }
+}
+setInterval(prewarm, 30 * 1000);
+
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== "claude") return;
   ports.add(port);
   connectCompanion();
+  prewarm();
   port.postMessage({ type: "companion", connected: companionConnected() });
   const active = new Map(); // id -> stream
 
@@ -220,18 +294,14 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     if (!isAuto) show();
 
+    const materials = await loadMaterials();
     const client = new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true });
     const params = {
-      model: s.model,
+      ...baseParams(s, materials),
       max_tokens: 8000,
-      output_config: { effort: s.effort },
-      system: buildSystem(s),
-      messages: [{ role: "user", content: buildUserContent(msg, s) }],
+      messages: [{ role: "user", content: buildUserContent(msg, s, materials) }],
     };
-    if (FALLBACK_MODELS.has(s.model)) {
-      params.betas = ["server-side-fallback-2026-07-01"];
-      params.fallbacks = "default";
-    }
+    if (materials.length) lastCacheUse = Date.now();
 
     // В авто-режиме сначала копим начало ответа: если это [SKIP] — карточку не показываем.
     let pending = "";

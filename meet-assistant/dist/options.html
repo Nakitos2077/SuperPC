@@ -14,6 +14,12 @@
   .check { display: flex; gap: 8px; align-items: center; font-weight: normal; }
   button { margin-top: 20px; padding: 8px 20px; font: inherit; border: 0; border-radius: 8px; background: #1a73e8; color: #fff; cursor: pointer; }
   #saved { margin-left: 12px; color: #188038; }
+  .materials { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .mat { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 8px; }
+  .mat .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mat .meta { color: #5f6368; font-size: 12px; }
+  .mat button { margin: 0; padding: 2px 10px; background: #d93025; }
+  .err { color: #d93025; }
 </style>
 </head>
 <body>
@@ -52,7 +58,8 @@
   <option value="captions">Субтитры Google Meet (с именами участников)</option>
 </select>
 <div class="hint">«Звук» не требует субтитров и бесплатен. Нужен Chrome 135 или новее, иначе слышен только микрофон.
-  Собеседники подписываются «Співрозмовник» (имена знают только субтитры).</div>
+  Собеседники подписываются «Співрозмовник» (имена знают только субтитры).
+  В Zoom (в браузере) всегда используется «Звук» — субтитров Zoom программа не читает.</div>
 
 <label for="speechLang">Язык речи на встрече (для распознавания звука)</label>
 <select id="speechLang">
@@ -64,12 +71,23 @@
 <label for="context">Контекст встречи <span class="hint">(необязательно)</span></label>
 <textarea id="context" placeholder="Например: Я — frontend-разработчик, это собеседование в компанию X на позицию Senior React. Подсказывай технические ответы."></textarea>
 
+<label>📚 Мои презентации <span class="hint">(Claude будет отвечать в первую очередь по ним)</span></label>
+<div id="materials" class="materials"></div>
+<input id="materialFiles" type="file" multiple accept=".pdf,.pptx,.txt,.md">
+<div class="hint">Лучше всего PDF: Claude видит слайды целиком — формулы, схемы, картинки.
+  PowerPoint: «Файл → Сохранить как → PDF». Из PPTX берётся только текст.
+  Файлы хранятся только в этом браузере и отправляются вместе с вопросами на api.anthropic.com.</div>
+<div id="materialsStatus" class="hint"></div>
+<label class="check"><input id="materialsOnly" type="checkbox"> Отвечать ТОЛЬКО по презентациям, ничего не добавляя от себя</label>
+<div class="hint">Если ответа в презентациях нет, Claude так и скажет. Без галочки он может дополнять ответ своими знаниями с пометкой «(не из презентаций)».</div>
+
 <label for="transcriptChars">Сколько последних символов расшифровки отправлять</label>
 <input id="transcriptChars" type="number" min="2000" max="200000" step="1000">
 <div class="hint">Больше — лучше контекст длинной встречи, но дороже и медленнее.</div>
 
 <label class="check"><input id="autoMode" type="checkbox"> Авто-режим: Claude сам слушает и подсказывает, когда мне задают вопрос</label>
 <label class="check"><input id="autoOnMyVoice" type="checkbox"> Реагировать и на мой голос: если я сам зачитываю вопрос вслух — тоже отвечать</label>
+<label class="check"><input id="fastMode" type="checkbox"> ⚡ Максимальная скорость: отвечать сразу, без «размышлений» (Haiku 5.5 и Sonnet 5.5)</label>
 <label class="check"><input id="hideWhilePresenting" type="checkbox"> Прятать панель в Мите, пока я показываю экран</label>
 <div class="hint">Чтобы видеть подсказки во время демонстрации, запусти окно-компаньон (папка <code>companion</code>) — его не видно в трансляции.</div>
 
