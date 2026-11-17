@@ -136,11 +136,27 @@ function buildUserContent({ task, question, transcript, recent, image, prev, pre
   return parts;
 }
 
+// Расход токенов ответа — показываем под карточкой, чтобы было видно, работает ли кэш презентаций.
+function pickUsage(u) {
+  if (!u) return null;
+  return {
+    input: u.input_tokens || 0,
+    cacheRead: u.cache_read_input_tokens || 0,
+    cacheWrite: u.cache_creation_input_tokens || 0,
+    output: u.output_tokens || 0,
+  };
+}
+
 function errorText(err) {
   if (err instanceof Anthropic.AuthenticationError) return "Неверный API-ключ. Проверь его в настройках расширения.";
   if (err instanceof Anthropic.PermissionDeniedError) return "Нет доступа к модели для этого ключа.";
   if (err instanceof Anthropic.NotFoundError) return "Модель не найдена — выбери другую в настройках.";
-  if (err instanceof Anthropic.RateLimitError) return "Превышен лимит запросов, попробуй через несколько секунд.";
+  if (err instanceof Anthropic.RateLimitError) {
+    // Показываем точный текст сервера: в нём сказано, какой лимит превышен (запросы или токены в минуту).
+    const detail = err.error?.error?.message || err.message || "";
+    const retry = err.headers?.get?.("retry-after");
+    return "Превышен лимит аккаунта Anthropic" + (retry ? ` (можно повторить через ${retry} с)` : "") + ".\n" + detail;
+  }
   if (err instanceof Anthropic.APIUserAbortError) return null;
   if (err instanceof Anthropic.APIConnectionError) return "Нет соединения с API Anthropic.";
   if (err instanceof Anthropic.APIError) return `Ошибка API (${err.status ?? "?"}): ${err.message}`;
@@ -200,6 +216,7 @@ setInterval(() => {
 
 // ------------------------------------------------------------------ Запросы
 let keySeq = 0;
+let rateLimitedUntil = 0; // после 429 авто-режим и прогрев ждут, сколько сказал сервер
 const keyOwners = new Map(); // ключ карточки в окне-компаньоне -> { port, id } запроса во вкладке Мита
 
 // Общая часть запроса: модель, настройки и всё, что кэшируется (system + презентации).
@@ -232,7 +249,7 @@ let lastCacheUse = 0;
 let warming = false;
 
 async function prewarm() {
-  if (warming || !ports.size || Date.now() - lastCacheUse < WARM_EVERY_MS) return;
+  if (warming || !ports.size || Date.now() - lastCacheUse < WARM_EVERY_MS || Date.now() < rateLimitedUntil) return;
   warming = true;
   try {
     const s = await loadSettings();
@@ -277,6 +294,8 @@ chrome.runtime.onConnect.addListener((port) => {
     if (keyOwners.size > 60) keyOwners.delete(keyOwners.keys().next().value);
     const isAuto = msg.task === "auto";
     const send = (m) => { try { port.postMessage({ id, ...m }); } catch {} };
+    // Лимит аккаунта исчерпан — авто-проверки молча пропускаем, пока не пройдёт пауза.
+    if (isAuto && Date.now() < rateLimitedUntil) { send({ type: "skip" }); return; }
     let shown = false;
     const show = () => {
       if (shown) return;
@@ -322,8 +341,12 @@ chrome.runtime.onConnect.addListener((port) => {
       const final = await stream.finalMessage();
       if (!shown) { send({ type: "skip" }); return; }
       if (final.stop_reason === "refusal") out({ type: "error", text: "Модель отказалась отвечать на этот запрос." });
-      else out({ type: "done" });
+      else out({ type: "done", usage: pickUsage(final.usage) });
     } catch (err) {
+      if (err instanceof Anthropic.RateLimitError) {
+        const retry = Number(err.headers?.get?.("retry-after")) || 20;
+        rateLimitedUntil = Date.now() + retry * 1000;
+      }
       const text = skipped ? null : errorText(err);
       if (!shown && !text) { send({ type: "skip" }); return; }
       if (text) { show(); out({ type: "error", text }); }

@@ -286,6 +286,13 @@ function main() {
     });
   }
 
+
+  function usageText(u) {
+    const k = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+    return `📊 вход: ${k(u.input)} новых` + (u.cacheRead ? ` + ${k(u.cacheRead)} из кэша` : "") +
+      (u.cacheWrite ? ` + ${k(u.cacheWrite)} записано в кэш` : "") + ` · ответ: ${k(u.output)}`;
+  }
+
   // ------------------------------------------- Строка «услышал» / «думаю»
   // Показывает последнюю услышанную фразу и что Claude уже думает — чтобы не повторять вопрос.
   let heardText = "";
@@ -408,6 +415,7 @@ function main() {
       else if (m.type === "delta") { text += m.text; req.text = text; card.setBody(text); }
       else {
         if (m.type === "error") card.setError(m.text);
+        if (m.usage) card.setUsage(usageText(m.usage));
         card.finish();
         end();
       }
@@ -622,6 +630,7 @@ function main() {
       remove() { card.remove(); },
       setBody(text) { content.replaceChildren(...renderRich(text)); },
       setError(text) { content.replaceChildren(el("div", { className: "error", textContent: text })); },
+      setUsage(text) { card.append(el("div", { className: "usage", textContent: text })); },
       finish() {
         stop.remove();
         if (onDraw && !content.querySelector(".error")) draw.classList.remove("hidden");
@@ -679,6 +688,8 @@ var CSS = `
 .diag { color: #80868b; font-size: 11px; }
 .heard { color: #bdc1c6; font-size: 12px; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .heard:empty { display: none; }
+.usage { margin-top: 4px; color: #80868b; font-size: 11px; }
+.error { white-space: pre-wrap; }
 .diag:empty { display: none; }
 .badge { color: #8ab4f8; font-size: 12px; }
 .spacer { flex: 1; }

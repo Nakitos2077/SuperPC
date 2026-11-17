@@ -44,6 +44,12 @@ window.overlay.onHint((m) => {
   } else if (m.type === "error") {
     c.content.replaceChildren(el("div", { className: "error", textContent: m.text }));
   } else if (m.type === "done") {
+    if (m.usage) {
+      const u = m.usage, k = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+      c.card.append(el("div", { className: "usage", textContent: `📊 вход: ${k(u.input)} новых` +
+        (u.cacheRead ? ` + ${k(u.cacheRead)} из кэша` : "") + (u.cacheWrite ? ` + ${k(u.cacheWrite)} записано в кэш` : "") +
+        ` · ответ: ${k(u.output)}` }));
+    }
     if (!c.text) c.content.querySelector(".typing")?.replaceWith(el("span", { className: "muted", textContent: "(нет ответа)" }));
     if (c.drawable) c.draw.style.display = "";
   }
