@@ -121,6 +121,13 @@ function buildSystem(s, materials) {
     "Схемы: если ответ заметно понятнее с картинкой (структура данных — дерево, граф, связный список, " +
     "стек; шаги алгоритма; архитектура; поток запросов) или схему прямо просят — нарисуй одним блоком " +
     "```svg ... ```: один <svg> с viewBox, ширина до 600, белый фон, стрелки и подписи, без скриптов и внешних ссылок." +
+    (webSearchOn(s)
+      ? "\n\nУ тебя есть веб-поиск. Используй его ТОЛЬКО когда нужен точный факт, в котором ты не уверен: " +
+        "даты, имена, история конкретного университета или организации, свежие данные, версии библиотек. " +
+        "Для общих знаний и обычных вопросов по программированию не ищи — отвечай сразу. В авто-режиме сначала " +
+        "реши, нужно ли вообще отвечать; если нет — сразу " + SKIP + ", без поиска. Не пиши вступлений вроде " +
+        "«сейчас поищу». Если искал — в конце коротко укажи источник (название сайта)."
+      : "") +
     materialsRule(s, materials) +
     (s.context ? "\n\nКонтекст от пользователя (кто он, что за встреча):\n" + s.context : "")
   );
@@ -231,6 +238,10 @@ let rateLimitedUntil = 0; // после 429 авто-режим и прогре�
 const keyOwners = new Map(); // ключ карточки в окне-компаньоне -> { port, id } запроса во вкладке Мита
 
 // Общая часть запроса: модель, настройки и всё, что кэшируется (system + презентации).
+function webSearchOn(s) {
+  return !!s.webSearch && !s.model.startsWith("claude-haiku");
+}
+
 function baseParams(s, materials) {
   const params = {
     model: s.model,
@@ -244,6 +255,9 @@ function baseParams(s, materials) {
     if (s.model.startsWith("claude-haiku-5-5")) params.thinking = { type: "disabled" };
     else if (s.model.startsWith("claude-sonnet-5-5")) params.thinking = { type: "between_tools" };
   }
+  // Поиск в интернете для фактов (выполняется на серверах Anthropic). У Haiku не включаем —
+  // этот вариант инструмента поддерживают Sonnet/Opus/Fable.
+  if (webSearchOn(s)) params.tools = [{ type: "web_search_20260209", name: "web_search", max_uses: 2 }];
   if (FALLBACK_MODELS.has(s.model)) {
     params.betas = ["server-side-fallback-2026-07-01"];
     params.fallbacks = "default";

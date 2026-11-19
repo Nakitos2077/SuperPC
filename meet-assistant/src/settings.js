@@ -13,6 +13,7 @@ export const DEFAULTS = {
   transcriptChars: 15000,
   materialsOnly: true, // отвечать строго по загруженным презентациям, ничего не добавляя от себя
   fastMode: true, // максимальная скорость: без «размышлений» модели (Haiku/Sonnet)
+  webSearch: true, // поиск в интернете для фактов (Sonnet/Opus/Fable; у Haiku не работает)
 };
 
 export async function loadSettings() {

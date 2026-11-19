@@ -14,6 +14,9 @@
   .check { display: flex; gap: 8px; align-items: center; font-weight: normal; }
   button { margin-top: 20px; padding: 8px 20px; font: inherit; border: 0; border-radius: 8px; background: #1a73e8; color: #fff; cursor: pointer; }
   #saved { margin-left: 12px; color: #188038; }
+  .presets { display: flex; gap: 8px; flex-wrap: wrap; }
+  .presets button { margin-top: 0; }
+  #presetFast { background: #5f6368; }
   .materials { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
   .mat { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 8px; }
   .mat .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -28,6 +31,16 @@
 <label for="apiKey">API-ключ Anthropic</label>
 <input id="apiKey" type="password" placeholder="sk-ant-...">
 <div class="hint">Ключ создаётся на console.anthropic.com → API Keys. Хранится только локально в этом браузере.</div>
+
+<label>Режим</label>
+<div class="presets">
+  <button type="button" id="presetAccurate">🎯 Точно, как в чате</button>
+  <button type="button" id="presetFast">⚡ Быстро и дёшево</button>
+</div>
+<div class="hint">«Точно» — Sonnet 5.5 с размышлениями и поиском фактов в интернете: качество близко к чату Claude,
+  ответ обычно за несколько секунд, стоит примерно в 20 раз дороже Haiku. «Быстро» — Haiku 5.5 без размышлений.
+  Кнопка сразу сохраняет настройки.</div>
+<div id="presetSaved" class="hint"></div>
 
 <label for="model">Модель</label>
 <select id="model">
@@ -87,6 +100,7 @@
 
 <label class="check"><input id="autoMode" type="checkbox"> Авто-режим: Claude сам слушает и подсказывает, когда мне задают вопрос</label>
 <label class="check"><input id="autoOnMyVoice" type="checkbox"> Реагировать и на мой голос: если я сам зачитываю вопрос вслух — тоже отвечать</label>
+<label class="check"><input id="webSearch" type="checkbox"> 🌐 Поиск в интернете для фактов (даты, история, свежие данные) — Sonnet/Opus/Fable, не Haiku</label>
 <label class="check"><input id="fastMode" type="checkbox"> ⚡ Максимальная скорость: отвечать сразу, без «размышлений» (Haiku 5.5 и Sonnet 5.5)</label>
 <label class="check"><input id="hideWhilePresenting" type="checkbox"> Прятать панель в Мите, пока я показываю экран</label>
 <div class="hint">Чтобы видеть подсказки во время демонстрации, запусти окно-компаньон (папка <code>companion</code>) — его не видно в трансляции.</div>

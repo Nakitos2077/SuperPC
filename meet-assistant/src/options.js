@@ -25,6 +25,24 @@ $("save").onclick = async () => {
   setTimeout(() => ($("saved").textContent = ""), 2000);
 };
 
+// ---------------------------------------------------------------- Пресеты режима
+const PRESETS = {
+  presetAccurate: { label: "🎯 Точно, как в чате", values: { model: "claude-sonnet-5-5", effort: "medium", fastMode: false, webSearch: true } },
+  presetFast: { label: "⚡ Быстро и дёшево", values: { model: "claude-haiku-5-5", effort: "low", fastMode: true, webSearch: false } },
+};
+for (const [id, preset] of Object.entries(PRESETS)) {
+  $(id).onclick = async () => {
+    for (const [key, value] of Object.entries(preset.values)) {
+      const input = $(key);
+      if (!input) continue;
+      if (input.type === "checkbox") input.checked = value;
+      else input.value = value;
+    }
+    await chrome.storage.local.set(preset.values);
+    $("presetSaved").textContent = `Включён режим «${preset.label}» ✓`;
+  };
+}
+
 // ---------------------------------------------------------------- Презентации
 import JSZip from "jszip";
 import { loadMaterials, addMaterials, deleteMaterial, MAX_TOTAL_BYTES, MAX_TOTAL_PAGES } from "./materials.js";
