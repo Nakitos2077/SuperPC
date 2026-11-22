@@ -115,7 +115,9 @@
   <li>Нажми «Найти мой chat id», потом «Отправить тест» и «Сохранить».</li>
 </ol>
 <input id="tgToken" type="password" placeholder="Токен бота от @BotFather">
-<input id="tgChatId" type="text" placeholder="Chat id (заполнится сам)" style="margin-top:6px">
+<input id="tgChatId" type="text" placeholder="Chat id получателей через запятую (заполнится сам)" style="margin-top:6px">
+<div class="hint">Несколько получателей: каждый открывает твоего бота и жмёт <b>Start</b>, потом ты жмёшь «Найти chat id» —
+  все они добавятся. Или создай группу в Telegram, добавь туда бота и людей, напиши в группе <code>/start</code> и нажми «Найти chat id».</div>
 <div class="presets" style="margin-top:6px">
   <button type="button" id="tgFind">🔎 Найти мой chat id</button>
   <button type="button" id="tgTest">✉️ Отправить тест</button>

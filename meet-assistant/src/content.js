@@ -438,7 +438,7 @@ function main() {
           .catch(() => { try { getPort().postMessage({ type: "tg-image", id: m.id, png: null }); } catch {} });
         return;
       }
-      if (m.type === "tg") { requests.get(m.id)?.card.setUsage(m.ok ? "📨 отправлено в Telegram" : "⚠️ Telegram: " + m.error); return; }
+      if (m.type === "tg") { requests.get(m.id)?.card.setUsage(m.ok ? "📨 отправлено в Telegram" + (m.count > 1 ? ` (${m.count} получателям)` : "") : "⚠️ Telegram: " + m.error); return; }
       if (m.type === "companion-ask") { ask({ task: "screenshot", image: m.image, label: "📸 Скрин экрана" }); return; }
       handlers.get(m.id)?.(m);
     });

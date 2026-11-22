@@ -1,5 +1,5 @@
 import { DEFAULTS, loadSettings } from "./settings.js";
-import { findChatId, sendText } from "./telegram.js";
+import { findChats, chatIds, sendText } from "./telegram.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -54,21 +54,24 @@ $("tgFind").onclick = async () => {
   if (!token) return tgStatus("Сначала вставь токен бота.", true);
   tgStatus("Ищу…");
   try {
-    const chat = await findChatId(token);
-    if (!chat) return tgStatus("Бот пока не получил сообщений. Открой своего бота в Telegram, отправь /start и нажми ещё раз.", true);
-    $("tgChatId").value = chat.id;
-    await chrome.storage.local.set({ tgToken: token, tgChatId: chat.id });
-    tgStatus(`Нашёл чат${chat.name ? " «" + chat.name + "»" : ""} (id ${chat.id}) ✓ Сохранено.`);
+    const chats = await findChats(token);
+    if (!chats.length) return tgStatus("Бот пока не получил сообщений. Каждый получатель должен открыть бота и нажать Start (в группе — написать /start), потом нажми ещё раз.", true);
+    // Добавляем найденные чаты к уже указанным (никого не теряем).
+    const ids = new Set(chatIds({ tgChatId: $("tgChatId").value }));
+    for (const c of chats) ids.add(c.id);
+    $("tgChatId").value = [...ids].join(", ");
+    await chrome.storage.local.set({ tgToken: token, tgChatId: $("tgChatId").value });
+    tgStatus("Получатели: " + chats.map((c) => `${c.group ? "группа " : ""}«${c.name || c.id}»`).join(", ") + " ✓ Сохранено.");
   } catch (e) {
     tgStatus("Ошибка Telegram: " + e.message + (/Unauthorized/i.test(e.message) ? " — проверь токен." : ""), true);
   }
 };
 $("tgTest").onclick = async () => {
   const s = { tgToken: $("tgToken").value.trim(), tgChatId: $("tgChatId").value.trim() };
-  if (!s.tgToken || !s.tgChatId) return tgStatus("Нужны токен и chat id.", true);
+  if (!s.tgToken || !chatIds(s).length) return tgStatus("Нужны токен и chat id.", true);
   try {
-    await sendText(s, "✅ Meet Assistant подключён. Сюда будут приходить скрины и ответы Claude.");
-    tgStatus("Тестовое сообщение отправлено — проверь Telegram ✓");
+    const { results, errors } = await sendText(s, "✅ Meet Assistant подключён. Сюда будут приходить скрины и ответы Claude.");
+    tgStatus(`Отправлено получателям: ${Object.keys(results).length}` + (errors.length ? ` · не дошло: ${errors.join("; ")}` : " ✓"), !!errors.length);
   } catch (e) {
     tgStatus("Ошибка Telegram: " + e.message, true);
   }

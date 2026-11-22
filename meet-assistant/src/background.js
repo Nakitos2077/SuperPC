@@ -32,7 +32,10 @@ const IMAGE_RULE =
   "в какой строке, и исправленный код.\n" +
   "4) Если на экране просто код — сразу объясни его. " + EXPLAIN_RULE.replace(/^Если просят объяснить код \([^)]*\) — объясни его: /, "Как объяснять: ") + "\n" +
   "5) Если кода нет — кратко объясни, что показано и что из этого важно для разговора.\n" +
-  "Если на экране несколько задач или фрагментов — бери тот, что в фокусе / последний.";
+  "ВАЖНО: если на экране НЕСКОЛЬКО заданий (Завдання 1, 2, 3…, пункты а), б), в)…) — реши ВСЕ по порядку, " +
+  "каждое полностью, с отдельным заголовком («Завдання 1», «Завдання 2»…). Ни одно не пропускай, даже если " +
+  "оно внизу экрана или видно частично (тогда реши то, что видно, и отметь, что часть не видна). " +
+  "Вычисления доводи до конца и проверяй арифметику.";
 
 // Блок «своими словами»: объяснение от первого лица, которое пользователь может прочитать вслух.
 // Начинается со строки-заголовка с 🗣 — по ней блок отделяется (для Telegram он уходит отдельным текстом).
@@ -375,7 +378,8 @@ chrome.runtime.onConnect.addListener((port) => {
     const client = new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true });
     const params = {
       ...baseParams(s, materials),
-      max_tokens: 8000,
+      // Скрин может содержать несколько заданий — даём больше места на ответ.
+      max_tokens: msg.image ? 16000 : 8000,
       messages: [{ role: "user", content: buildUserContent(msg, s, materials) }],
     };
     if (materials.length) lastCacheUse = Date.now();
@@ -400,7 +404,10 @@ chrome.runtime.onConnect.addListener((port) => {
       const final = await stream.finalMessage();
       if (!shown) { send({ type: "skip" }); return; }
       if (final.stop_reason === "refusal") out({ type: "error", text: "Модель отказалась отвечать на этот запрос." });
-      else out({ type: "done", usage: pickUsage(final.usage) });
+      else {
+        if (final.stop_reason === "max_tokens") out({ type: "delta", text: "\n\n_(ответ обрезан: слишком длинный — задай оставшееся задание отдельно)_" });
+        out({ type: "done", usage: pickUsage(final.usage) });
+      }
       if (tgPhoto && fullText.trim()) {
         // Telegram не рисует формулы, поэтому просим вкладку нарисовать ответ картинкой (как в панели).
         // Не получилось за 10 с — отправляем текстом.
@@ -412,12 +419,14 @@ chrome.runtime.onConnect.addListener((port) => {
           send({ type: "tg-render", text: main });
         });
         Promise.all([tgPhoto, rendered])
-          .then(async ([photoId, img]) => {
-            if (photoId === null) return;
-            if (img) await sendAnswerImage(s, img.png, img.height, img.width, photoId, "✳ Ответ Claude");
-            else if (main) await sendText(s, main, photoId);
-            if (own) await sendText(s, `${title || "🗣 Своїми словами"}\n\n${own}`, photoId);
-            send({ type: "tg", ok: true });
+          .then(async ([photoIds, img]) => {
+            if (!photoIds || !Object.keys(photoIds).length) return;
+            const errors = [];
+            if (img) errors.push(...(await sendAnswerImage(s, img.png, img.height, img.width, photoIds, "✳ Ответ Claude")).errors);
+            else if (main) errors.push(...(await sendText(s, main, photoIds)).errors);
+            if (own) errors.push(...(await sendText(s, `${title || "🗣 Своїми словами"}\n\n${own}`, photoIds)).errors);
+            const n = Object.keys(photoIds).length;
+            send(errors.length ? { type: "tg", ok: false, error: errors.join("; ") } : { type: "tg", ok: true, count: n });
           })
           .catch((e) => send({ type: "tg", ok: false, error: e.message }));
       }
