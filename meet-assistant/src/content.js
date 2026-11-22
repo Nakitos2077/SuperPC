@@ -433,7 +433,7 @@ function main() {
       // Статус Telegram приходит уже после ответа — карточку берём из списка запросов.
       if (m.type === "tg-render") {
         const r = requests.get(m.id);
-        renderAnswerPng(r?.text || "")
+        renderAnswerPng(m.text ?? r?.text ?? "")
           .then((img) => getPort().postMessage({ type: "tg-image", id: m.id, ...img }))
           .catch(() => { try { getPort().postMessage({ type: "tg-image", id: m.id, png: null }); } catch {} });
         return;

@@ -34,6 +34,24 @@ const IMAGE_RULE =
   "5) Если кода нет — кратко объясни, что показано и что из этого важно для разговора.\n" +
   "Если на экране несколько задач или фрагментов — бери тот, что в фокусе / последний.";
 
+// Блок «своими словами»: объяснение от первого лица, которое пользователь может прочитать вслух.
+// Начинается со строки-заголовка с 🗣 — по ней блок отделяется (для Telegram он уходит отдельным текстом).
+const OWN_WORDS_RULE =
+  "В самом конце ответа добавь блок объяснения своими словами. Он начинается отдельной строкой " +
+  "«## 🗣 » и коротким заголовком на языке ответа (например «## 🗣 Своїми словами»). Под ним — 3–6 простых " +
+  "предложений от первого лица, как будто я сам рассказываю преподавателю или собеседнику, что и почему я " +
+  "делаю: «Спочатку я…, потім я…, тому що…, у результаті я отримав…». Пиши живо и просто, как студент " +
+  "говорит вслух. БЕЗ формул, LaTeX, кода, таблиц, markdown и спецсимволов — числа и выражения словами или " +
+  "простым текстом (например «ікс дорівнює двадцять один», «визначник дорівнює одиниці»).";
+const OWN_WORDS_RE = /^#{1,3}\s*🗣.*$/m;
+
+// Делим ответ на основную часть и блок «своими словами».
+function splitOwnWords(text) {
+  const m = text.match(OWN_WORDS_RE);
+  if (!m) return { main: text.trim(), own: "" };
+  return { main: text.slice(0, m.index).trim(), own: text.slice(m.index + m[0].length).trim(), title: m[0].replace(/^#+\s*/, "") };
+}
+
 const TASKS = {
   draw:
     "Нарисуй схему к этому заданию одним блоком ```svg```: структуру данных, шаги алгоритма, " +
@@ -150,6 +168,7 @@ function buildUserContent({ task, question, transcript, recent, image, prev, pre
   else if (task === "auto") text += autoTask(recent || "", previous);
   else text += TASKS[task] || TASKS.hint;
   if (task !== "draw") text += "\n\n" + CODE_RULE;
+  if (task !== "draw" && task !== "summary" && s.ownWords) text += "\n\n" + OWN_WORDS_RULE;
   text += "\n\n" + languageRule(s);
   parts.push({ type: "text", text });
   return parts;
@@ -385,16 +404,19 @@ chrome.runtime.onConnect.addListener((port) => {
       if (tgPhoto && fullText.trim()) {
         // Telegram не рисует формулы, поэтому просим вкладку нарисовать ответ картинкой (как в панели).
         // Не получилось за 10 с — отправляем текстом.
+        // Блок «своими словами» уходит отдельным текстом, а на картинке — только решение.
+        const { main, own, title } = splitOwnWords(fullText);
         const rendered = new Promise((resolve) => {
           const timer = setTimeout(() => { tgRenders.delete(id); resolve(null); }, 10000);
           tgRenders.set(id, (m) => { clearTimeout(timer); tgRenders.delete(id); resolve(m.png ? m : null); });
-          send({ type: "tg-render" });
+          send({ type: "tg-render", text: main });
         });
         Promise.all([tgPhoto, rendered])
           .then(async ([photoId, img]) => {
             if (photoId === null) return;
             if (img) await sendAnswerImage(s, img.png, img.height, img.width, photoId, "✳ Ответ Claude");
-            else await sendText(s, fullText.trim(), photoId);
+            else if (main) await sendText(s, main, photoId);
+            if (own) await sendText(s, `${title || "🗣 Своїми словами"}\n\n${own}`, photoId);
             send({ type: "tg", ok: true });
           })
           .catch((e) => send({ type: "tg", ok: false, error: e.message }));
