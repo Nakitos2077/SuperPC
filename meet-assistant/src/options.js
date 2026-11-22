@@ -1,4 +1,5 @@
 import { DEFAULTS, loadSettings } from "./settings.js";
+import { findChatId, sendText } from "./telegram.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -42,6 +43,36 @@ for (const [id, preset] of Object.entries(PRESETS)) {
     $("presetSaved").textContent = `Включён режим «${preset.label}» ✓`;
   };
 }
+
+// ---------------------------------------------------------------- Telegram
+function tgStatus(text, error = false) {
+  $("tgStatus").textContent = text;
+  $("tgStatus").classList.toggle("err", error);
+}
+$("tgFind").onclick = async () => {
+  const token = $("tgToken").value.trim();
+  if (!token) return tgStatus("Сначала вставь токен бота.", true);
+  tgStatus("Ищу…");
+  try {
+    const chat = await findChatId(token);
+    if (!chat) return tgStatus("Бот пока не получил сообщений. Открой своего бота в Telegram, отправь /start и нажми ещё раз.", true);
+    $("tgChatId").value = chat.id;
+    await chrome.storage.local.set({ tgToken: token, tgChatId: chat.id });
+    tgStatus(`Нашёл чат${chat.name ? " «" + chat.name + "»" : ""} (id ${chat.id}) ✓ Сохранено.`);
+  } catch (e) {
+    tgStatus("Ошибка Telegram: " + e.message + (/Unauthorized/i.test(e.message) ? " — проверь токен." : ""), true);
+  }
+};
+$("tgTest").onclick = async () => {
+  const s = { tgToken: $("tgToken").value.trim(), tgChatId: $("tgChatId").value.trim() };
+  if (!s.tgToken || !s.tgChatId) return tgStatus("Нужны токен и chat id.", true);
+  try {
+    await sendText(s, "✅ Meet Assistant подключён. Сюда будут приходить скрины и ответы Claude.");
+    tgStatus("Тестовое сообщение отправлено — проверь Telegram ✓");
+  } catch (e) {
+    tgStatus("Ошибка Telegram: " + e.message, true);
+  }
+};
 
 // ---------------------------------------------------------------- Презентации
 import JSZip from "jszip";

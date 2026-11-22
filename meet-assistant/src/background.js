@@ -3,6 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { loadSettings } from "./settings.js";
 import { loadMaterials, materialBlocks } from "./materials.js";
+import { telegramReady, sendPhoto, sendText } from "./telegram.js";
 
 // Модели, для которых доступен серверный fallback при отказе (refusal).
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2"]);
@@ -339,6 +340,17 @@ chrome.runtime.onConnect.addListener((port) => {
     if (!isAuto) show();
 
     const materials = await loadMaterials();
+
+    // Telegram: каждый скрин (📸 / Ctrl+Shift+S / Ctrl+V / «📸 Экран») сразу отправляем фото в чат с ботом,
+    // а когда Claude ответит — его ответ, ответом на это фото.
+    let tgPhoto = null;
+    if (msg.image && (msg.task === "screenshot" || msg.task === "screen") && telegramReady(s)) {
+      const time = new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
+      tgPhoto = sendPhoto(s, msg.image, `${msg.label || "📸 Скрин"} · ${time}` + (msg.question ? `\n${msg.question}` : ""))
+        .catch((e) => { send({ type: "tg", ok: false, error: e.message }); return null; });
+    }
+    let fullText = "";
+
     const client = new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true });
     const params = {
       ...baseParams(s, materials),
@@ -355,18 +367,24 @@ chrome.runtime.onConnect.addListener((port) => {
       active.set(id, stream);
       stream.on("text", (delta) => {
         if (skipped) return;
-        if (shown) { out({ type: "delta", text: delta }); return; }
+        if (shown) { fullText += delta; out({ type: "delta", text: delta }); return; }
         pending += delta;
         const head = pending.trimStart();
         if (head.length < SKIP.length && SKIP.startsWith(head)) return; // пока не ясно
         if (head.startsWith(SKIP)) { skipped = true; stream.abort(); return; }
         show();
+        fullText += head;
         out({ type: "delta", text: head });
       });
       const final = await stream.finalMessage();
       if (!shown) { send({ type: "skip" }); return; }
       if (final.stop_reason === "refusal") out({ type: "error", text: "Модель отказалась отвечать на этот запрос." });
       else out({ type: "done", usage: pickUsage(final.usage) });
+      if (tgPhoto && fullText.trim()) {
+        tgPhoto
+          .then((photoId) => photoId !== null && sendText(s, fullText.trim(), photoId).then(() => send({ type: "tg", ok: true })))
+          .catch((e) => send({ type: "tg", ok: false, error: e.message }));
+      }
     } catch (err) {
       if (err instanceof Anthropic.RateLimitError) {
         const retry = Number(err.headers?.get?.("retry-after")) || 20;

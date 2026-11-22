@@ -17,6 +17,7 @@
   .presets { display: flex; gap: 8px; flex-wrap: wrap; }
   .presets button { margin-top: 0; }
   #presetFast { background: #5f6368; }
+  .tg-steps { padding-left: 18px; margin: 4px 0 8px; }
   .materials { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
   .mat { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #ddd; border-radius: 8px; }
   .mat .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -104,6 +105,21 @@
 <label class="check"><input id="fastMode" type="checkbox"> ⚡ Максимальная скорость: отвечать сразу, без «размышлений» (Haiku 5.5 и Sonnet 5.5)</label>
 <label class="check"><input id="hideWhilePresenting" type="checkbox"> Прятать панель в Мите, пока я показываю экран</label>
 <div class="hint">Чтобы видеть подсказки во время демонстрации, запусти окно-компаньон (папка <code>companion</code>) — его не видно в трансляции.</div>
+
+<label>📨 Telegram: отправлять скрины и ответы в чат с ботом</label>
+<label class="check"><input id="tgEnabled" type="checkbox"> Включить: каждый скрин сразу приходит фото, а следом — ответ Claude</label>
+<ol class="hint tg-steps">
+  <li>В Telegram открой <b>@BotFather</b> → <code>/newbot</code> → придумай имя → скопируй токен вида <code>123456:ABC...</code>.</li>
+  <li>Вставь токен ниже. Открой своего нового бота и отправь ему <code>/start</code>.</li>
+  <li>Нажми «Найти мой chat id», потом «Отправить тест» и «Сохранить».</li>
+</ol>
+<input id="tgToken" type="password" placeholder="Токен бота от @BotFather">
+<input id="tgChatId" type="text" placeholder="Chat id (заполнится сам)" style="margin-top:6px">
+<div class="presets" style="margin-top:6px">
+  <button type="button" id="tgFind">🔎 Найти мой chat id</button>
+  <button type="button" id="tgTest">✉️ Отправить тест</button>
+</div>
+<div id="tgStatus" class="hint"></div>
 
 <button id="save">Сохранить</button><span id="saved"></span>
 

@@ -370,6 +370,8 @@ function main() {
     port.onMessage.addListener((m) => {
       if (m.type === "companion") { companionOn = m.connected; updateStatus(); return; }
       if (m.type === "companion-draw") { drawFor(m.id); return; }
+      // Статус Telegram приходит уже после ответа — карточку берём из списка запросов.
+      if (m.type === "tg") { requests.get(m.id)?.card.setUsage(m.ok ? "📨 отправлено в Telegram" : "⚠️ Telegram: " + m.error); return; }
       if (m.type === "companion-ask") { ask({ task: "screenshot", image: m.image, label: "📸 Скрин экрана" }); return; }
       handlers.get(m.id)?.(m);
     });
@@ -405,7 +407,7 @@ function main() {
       try { getPort().postMessage({ type: "abort", id }); } catch {}
     }, task === "auto", task === "draw" ? null : () => drawFor(id));
     let text = "";
-    const req = { task, question, image, title, text: "" };
+    const req = { task, question, image, title, text: "", card };
     requests.set(id, req);
     if (requests.size > 30) requests.delete(requests.keys().next().value);
     const end = (shown = true) => { handlers.delete(id); updateBusy(); onEnd?.(shown ? text : ""); };
