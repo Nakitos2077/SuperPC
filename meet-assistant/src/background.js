@@ -3,7 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { loadSettings } from "./settings.js";
 import { loadMaterials, materialBlocks } from "./materials.js";
-import { telegramReady, sendPhoto, sendText } from "./telegram.js";
+import { telegramReady, sendPhoto, sendText, sendAnswerImage } from "./telegram.js";
 
 // Модели, для которых доступен серверный fallback при отказе (refusal).
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2"]);
@@ -303,6 +303,7 @@ chrome.runtime.onConnect.addListener((port) => {
   prewarm();
   port.postMessage({ type: "companion", connected: companionConnected() });
   const active = new Map(); // id -> stream
+  const tgRenders = new Map(); // id запроса -> ждём картинку ответа от вкладки (для Telegram)
 
   port.onDisconnect.addListener(() => {
     ports.delete(port);
@@ -313,6 +314,7 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onMessage.addListener(async (msg) => {
     if (msg.type === "abort") { active.get(msg.id)?.abort(); return; }
     if (msg.type === "heard") { toCompanion({ type: "heard", text: String(msg.text || "") }); return; }
+    if (msg.type === "tg-image") { tgRenders.get(msg.id)?.(msg); return; }
     if (msg.type !== "ask") return;
     const { id } = msg;
     const key = `${Date.now()}-${++keySeq}`;
@@ -381,8 +383,20 @@ chrome.runtime.onConnect.addListener((port) => {
       if (final.stop_reason === "refusal") out({ type: "error", text: "Модель отказалась отвечать на этот запрос." });
       else out({ type: "done", usage: pickUsage(final.usage) });
       if (tgPhoto && fullText.trim()) {
-        tgPhoto
-          .then((photoId) => photoId !== null && sendText(s, fullText.trim(), photoId).then(() => send({ type: "tg", ok: true })))
+        // Telegram не рисует формулы, поэтому просим вкладку нарисовать ответ картинкой (как в панели).
+        // Не получилось за 10 с — отправляем текстом.
+        const rendered = new Promise((resolve) => {
+          const timer = setTimeout(() => { tgRenders.delete(id); resolve(null); }, 10000);
+          tgRenders.set(id, (m) => { clearTimeout(timer); tgRenders.delete(id); resolve(m.png ? m : null); });
+          send({ type: "tg-render" });
+        });
+        Promise.all([tgPhoto, rendered])
+          .then(async ([photoId, img]) => {
+            if (photoId === null) return;
+            if (img) await sendAnswerImage(s, img.png, img.height, img.width, photoId, "✳ Ответ Claude");
+            else await sendText(s, fullText.trim(), photoId);
+            send({ type: "tg", ok: true });
+          })
           .catch((e) => send({ type: "tg", ok: false, error: e.message }));
       }
     } catch (err) {

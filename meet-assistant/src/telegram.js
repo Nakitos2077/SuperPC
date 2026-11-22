@@ -32,6 +32,21 @@ export async function sendPhoto(s, base64, caption) {
   return msg.message_id;
 }
 
+// Картинка ответа (PNG base64) ответом на фото скрина. Очень длинную — документом (у фото есть лимит размеров).
+export async function sendAnswerImage(s, pngBase64, height, width, replyTo, caption) {
+  const bytes = Uint8Array.from(atob(pngBase64), (c) => c.charCodeAt(0));
+  const file = new Blob([bytes], { type: "image/png" });
+  const asPhoto = width + height <= 9500 && height / width <= 19;
+  const f = form({
+    chat_id: s.tgChatId,
+    caption: (caption || "").slice(0, 1000),
+    reply_to_message_id: replyTo ? String(replyTo) : undefined,
+    allow_sending_without_reply: "true",
+  });
+  f.append(asPhoto ? "photo" : "document", file, "answer.png");
+  await call(s.tgToken, asPhoto ? "sendPhoto" : "sendDocument", f);
+}
+
 // Текст ответа (длинный — несколькими сообщениями), ответом на фото.
 export async function sendText(s, text, replyTo) {
   const parts = [];
