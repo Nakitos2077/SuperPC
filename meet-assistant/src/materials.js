@@ -58,6 +58,8 @@ export function materialBlocks(list) {
       ? { type: "base64", media_type: "application/pdf", data: m.data }
       : { type: "text", media_type: "text/plain", data: m.data },
   }));
-  if (blocks.length) blocks[blocks.length - 1].cache_control = { type: "ephemeral" };
+  // Кэш на 1 час: вопросы в боте и на встрече бывают реже, чем раз в 5 минут (стандартный срок кэша).
+  // Запись в такой кэш дороже (×2), но каждое следующее чтение в течение часа — ×0.1 от цены.
+  if (blocks.length) blocks[blocks.length - 1].cache_control = { type: "ephemeral", ttl: "1h" };
   return blocks;
 }

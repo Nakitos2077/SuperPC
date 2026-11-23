@@ -311,7 +311,7 @@ function baseParams(s, materials) {
 // Пока открыт Мит, заранее кладём презентации в кэш Claude (запрос с max_tokens: 0 — ответа нет,
 // платится только запись в кэш). Тогда даже первый вопрос не ждёт, пока прочитаются все слайды.
 // Кэш живёт 5 минут с последнего использования, поэтому обновляем его, если вопросов не было ~4 мин.
-const WARM_EVERY_MS = 4 * 60 * 1000;
+const WARM_EVERY_MS = 50 * 60 * 1000; // кэш живёт час — обновляем чуть раньше
 let lastCacheUse = 0;
 let warming = false;
 
@@ -610,6 +610,7 @@ async function handleBotMessage(s, msg) {
     const materials = await loadMaterials();
 
     let q = "";
+    q += BOT_NOTE.trim() + "\n\n";
     if (transcript) q += "<transcript>\n" + transcript.slice(-s.transcriptChars) + "\n</transcript>\n\n";
     if (quoted) q += "Я отвечаю на это сообщение:\n<quoted>\n" + quoted + "\n</quoted>\n\n";
     if (image) q += TASKS.screenshot + (text ? "\n\nМой вопрос к фото: " + text : "");
@@ -618,8 +619,14 @@ async function handleBotMessage(s, msg) {
     if (s.ownWords) q += "\n\n" + OWN_WORDS_RULE;
     q += "\n\n" + languageRule(s);
 
-    // История — чередование user/assistant, начинается с user.
+    // Конспект — САМЫМ ПЕРВЫМ сообщением: тогда начало запроса не меняется от вопроса к вопросу
+    // и совпадает с запросами встречи — материалы читаются из общего кэша (в ~10 раз дешевле).
     const messages = [];
+    if (materials.length) {
+      messages.push({ role: "user", content: [...materialBlocks(materials), { type: "text", text: "Выше — мои материалы (конспект). Опирайся на них." }] });
+      messages.push({ role: "assistant", content: "Понял, буду опираться на материалы." });
+    }
+    // История — чередование user/assistant.
     for (const t of history) {
       if (!messages.length && t.role !== "user") continue;
       const last = messages[messages.length - 1];
@@ -627,7 +634,7 @@ async function handleBotMessage(s, msg) {
       else messages.push({ role: t.role, content: t.text });
     }
     if (messages.length && messages[messages.length - 1].role === "user") messages.pop();
-    const content = [...materialBlocks(materials)];
+    const content = [];
     if (image) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } });
     content.push({ type: "text", text: q });
     messages.push({ role: "user", content });
@@ -636,11 +643,12 @@ async function handleBotMessage(s, msg) {
     const base = baseParams(s, materials);
     const final = await client.beta.messages.stream({
       ...base,
-      system: base.system + BOT_NOTE,
+      // system — тот же, что у встречи (общий кэш); пометка «вопрос из Telegram» — в тексте вопроса.
       max_tokens: 16000,
       messages,
     }).finalMessage();
 
+    if (materials.length) lastCacheUse = Date.now();
     if (final.stop_reason === "refusal") { await sendText(one, "⚠️ Модель відмовилась відповідати на це питання.", { [chat]: msg.message_id }); return; }
     let answer = final.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
     if (final.stop_reason === "max_tokens") answer += "\n\n(відповідь обрізана — запитай решту окремо)";
