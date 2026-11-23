@@ -371,6 +371,7 @@ function main() {
     port.onMessage.addListener((m) => {
       if (m.type === "companion") { companionOn = m.connected; updateStatus(); return; }
       if (m.type === "companion-draw") { drawFor(m.id); return; }
+      if (m.type === "ticket-result") { const w = ticketWaits.get(m.id); ticketWaits.delete(m.id); w?.(m); return; }
       // Telegram-бот спрашивает расшифровку встречи для контекста.
       if (m.type === "get-transcript") { try { getPort().postMessage({ type: "transcript", reqId: m.reqId, text: transcriptText() }); } catch {} return; }
       // Статус Telegram приходит уже после ответа — карточку берём из списка запросов.
@@ -527,7 +528,9 @@ function main() {
     if (e.key === "Enter" && input.value.trim()) {
       const q = input.value.trim();
       input.value = "";
-      ask({ question: q, label: "❓ " + q });
+      // Номер билета («46», «білет 46», «12б») — сначала ищем в конспекте (мгновенно и бесплатно).
+      if (TICKET_INPUT.test(q)) showTicket(q);
+      else ask({ question: q, label: "❓ " + q });
     }
   });
   input.addEventListener("keyup", (e) => e.stopPropagation());
@@ -623,15 +626,40 @@ function main() {
     c.finish();
   }
 
+  // ------------------------------------------------ Билет из конспекта по номеру
+  const TICKET_INPUT = /^\s*(?:(?:б[іи]л[еє]т|питання|вопрос|№)\s*)?\d{1,3}\s*[абвгabcd]?\)?\s*(?:б[іи]л[еє]т)?\s*[.!?]?\s*$/i;
+  let ticketSeq = 0;
+  const ticketWaits = new Map();
+
+  function showTicket(q) {
+    const tid = "t" + ++ticketSeq;
+    const card = addCard("📚 " + q, null);
+    ticketWaits.set(tid, (m) => {
+      if (!m.found) {
+        // В конспекте нет — спрашиваем Claude как обычный вопрос.
+        card.remove();
+        ask({ question: q, label: "❓ " + q });
+        return;
+      }
+      card.setTitle("📚 " + m.title);
+      card.setBody(m.md);
+      card.addAction("🤖 Пояснити", "Пояснити цей білет простіше (Claude)", () =>
+        ask({ question: `Поясни простіше, своїми словами, ${q} з конспекту:\n\n${m.md}`, label: "🤖 Пояснення: " + m.title }));
+      card.finish();
+    });
+    try { getPort().postMessage({ type: "ticket", id: tid, query: q }); }
+    catch { ticketWaits.delete(tid); card.remove(); ask({ question: q, label: "❓ " + q }); }
+  }
+
   function addCard(title, onStop, hidden = false, onDraw = null) {
     const stop = el("button", { className: "icon", title: "Остановить", textContent: "■" });
     const draw = el("button", { className: "icon draw hidden", title: "Нарисовать рисунок к этому заданию", textContent: "✏️" });
     draw.onclick = () => onDraw?.();
     const close = el("button", { className: "icon", title: "Убрать", textContent: "✕" });
     const content = el("div", { className: "content" }, el("span", { className: "typing", textContent: "думаю…" }));
-    const card = el("div", { className: "card" },
-      el("div", { className: "card-head" }, el("span", { className: "card-title", textContent: title }), draw, stop, close),
-      content);
+    const titleEl = el("span", { className: "card-title", textContent: title });
+    const head = el("div", { className: "card-head" }, titleEl, draw, stop, close);
+    const card = el("div", { className: "card" }, head, content);
     stop.onclick = () => onStop?.();
     if (!onStop) stop.remove();
     close.onclick = () => card.remove();
@@ -643,6 +671,8 @@ function main() {
       remove() { card.remove(); },
       setBody(text) { content.replaceChildren(...renderRich(text)); },
       setError(text) { content.replaceChildren(el("div", { className: "error", textContent: text })); },
+      setTitle(text) { titleEl.textContent = text; },
+      addAction(label, tip, fn) { const b = el("button", { className: "icon act", title: tip, textContent: label }); b.onclick = fn; head.insertBefore(b, close); },
       setUsage(text) { card.append(el("div", { className: "usage", textContent: text })); },
       finish() {
         stop.remove();
@@ -701,6 +731,7 @@ var CSS = `
 .diag { color: #80868b; font-size: 11px; }
 .heard { color: #bdc1c6; font-size: 12px; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .heard:empty { display: none; }
+button.icon.act { color: #8ab4f8; font-size: 12px; }
 .usage { margin-top: 4px; color: #80868b; font-size: 11px; }
 .error { white-space: pre-wrap; }
 .diag:empty { display: none; }

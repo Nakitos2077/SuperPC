@@ -2,7 +2,10 @@
 // и дублирует их в окно-компаньон (невидимое для демонстрации экрана), если оно запущено.
 import Anthropic from "@anthropic-ai/sdk";
 import { loadSettings } from "./settings.js";
-import { loadMaterials, materialBlocks } from "./materials.js";
+import { loadMaterials as loadAllMaterials, materialBlocks, forClaude, findTicket, parseTicketQuery } from "./materials.js";
+
+// Claude получает только материалы с включённым «🤖» (остальные — только для просмотра билетов).
+const loadMaterials = async () => forClaude(await loadAllMaterials());
 import { telegramReady, sendPhoto, sendText, sendAnswerImage, chatIds, call, form, sendTyping, downloadFile, findChats } from "./telegram.js";
 
 // Модели, для которых доступен серверный fallback при отказе (refusal).
@@ -356,6 +359,18 @@ chrome.runtime.onConnect.addListener((port) => {
     if (msg.type === "abort") { active.get(msg.id)?.abort(); return; }
     if (msg.type === "heard") { toCompanion({ type: "heard", text: String(msg.text || "") }); return; }
     if (msg.type === "tg-image") { tgRenders.get(msg.id)?.(msg); return; }
+    // Билет из конспекта по номеру — мгновенно и бесплатно, без Claude.
+    if (msg.type === "ticket") {
+      const t = findTicket(await loadAllMaterials(), msg.query);
+      try { port.postMessage({ type: "ticket-result", id: msg.id, found: !!t, ...(t || {}) }); } catch {}
+      if (t) {
+        const key = `${Date.now()}-${++keySeq}`;
+        toCompanion({ type: "start", key, title: "📚 " + t.title });
+        toCompanion({ key, type: "delta", text: t.md });
+        toCompanion({ key, type: "done" });
+      }
+      return;
+    }
     if (msg.type !== "ask") return;
     const { id } = msg;
     const key = `${Date.now()}-${++keySeq}`;
@@ -581,6 +596,20 @@ async function handleBotMessage(s, msg) {
   if (/^\/start/.test(text)) {
     await sendText(one, "✅ Напиши будь-яке питання або надішли фото завдання — я відповім. /new — почати розмову заново.");
     return;
+  }
+  // «46», «білет 46», «12б» — сразу текст билета из конспекта (картинкой), без Claude и бесплатно.
+  const ticketQ = !msg.photo && parseTicketQuery(text);
+  if (ticketQ) {
+    const t = findTicket(await loadAllMaterials(), ticketQ);
+    if (t) {
+      const img = await renderViaOffscreen(`## ${t.title}\n\n${t.md}`);
+      const r = img
+        ? await sendAnswerImage(one, img.png, img.height, img.width, { [chat]: msg.message_id }, "📚 З конспекту · напиши «поясни» — пояснять простіше")
+        : await sendText(one, `${t.title}\n\n${t.md}`, { [chat]: msg.message_id });
+      await rememberTurn(chat, "user", text, msg.message_id);
+      await rememberTurn(chat, "assistant", `${t.title}\n\n${t.md}`, r.results[chat]);
+      return;
+    }
   }
   if (/^\/new/.test(text)) {
     const { tgHistory } = await botState();

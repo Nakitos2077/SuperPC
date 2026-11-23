@@ -89,18 +89,27 @@ function splitBlocks(src) {
   return out;
 }
 
+// Строчное оформление: `код`, формулы $…$ и \(…\), ***жирный курсив***, **жирный**, *курсив*.
+// Жирный и курсив разбираются рекурсивно — внутри могут быть формулы и вложенное оформление.
 function inline(text) {
   const nodes = [];
-  const re = /(\*\*[^*]+\*\*|`[^`]+`|\\\((.+?)\\\)|\$(?!\s)([^$\n]+?)(?<!\s)\$|\*(?!\s)([^*\n]+?)(?<!\s)\*)/g;
+  const re = new RegExp([
+    "`([^`]+)`",                                         // 1: код
+    "\\\\\\((.+?)\\\\\\)",                               // 2: \( формула \)
+    "\\$(?!\\s)([^$\\n]+?)(?<!\\s)\\$",                  // 3: $формула$
+    "\\*\\*\\*(?!\\s)(.+?)(?<!\\s)\\*\\*\\*",            // 4: ***жирный курсив***
+    "\\*\\*(?!\\s)((?:[^*]|\\*(?!\\*))+?)(?<!\\s)\\*\\*", // 5: **жирный** (внутри может быть *курсив*)
+    "\\*(?![\\s*])((?:\\*\\*(?:[^*]|\\*(?!\\*))+?\\*\\*|[^*\\n])+?)(?<!\\s)\\*(?!\\*)", // 6: *курсив* (внутри может быть **жирный**)
+  ].join("|"), "g");
   let last = 0, m;
   while ((m = re.exec(text))) {
     if (m.index > last) nodes.push(text.slice(last, m.index));
-    const tok = m[0];
-    if (tok.startsWith("**")) nodes.push(el("b", { textContent: tok.slice(2, -2) }));
-    else if (tok.startsWith("`")) nodes.push(el("code", { textContent: tok.slice(1, -1) }));
-    else if (m[4] !== undefined) nodes.push(el("i", {}, ...inline(m[4]))); // *курсив* (внутри может быть формула)
-    else nodes.push(mathNode(m[2] ?? m[3], false));
-    last = m.index + tok.length;
+    if (m[1] !== undefined) nodes.push(el("code", { textContent: m[1] }));
+    else if (m[2] !== undefined || m[3] !== undefined) nodes.push(mathNode(m[2] ?? m[3], false));
+    else if (m[4] !== undefined) nodes.push(el("b", {}, el("i", {}, ...inline(m[4]))));
+    else if (m[5] !== undefined) nodes.push(el("b", {}, ...inline(m[5])));
+    else nodes.push(el("i", {}, ...inline(m[6])));
+    last = m.index + m[0].length;
   }
   if (last < text.length) nodes.push(text.slice(last));
   return nodes;

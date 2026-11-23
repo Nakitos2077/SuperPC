@@ -63,3 +63,53 @@ export function materialBlocks(list) {
   if (blocks.length) blocks[blocks.length - 1].cache_control = { type: "ephemeral", ttl: "1h" };
   return blocks;
 }
+
+// Обновить материал (например, переключатель «отправлять Claude»).
+export async function updateMaterial(item) {
+  await tx("readwrite", (s) => s.put(item));
+}
+
+// Материалы, которые уходят Claude (переключатель «🤖» в настройках; по умолчанию — все).
+export function forClaude(list) {
+  return list.filter((m) => m.claude !== false);
+}
+
+// ----------------------------------------------------------------- Билеты из конспекта
+// Запрос вида «46», «білет 46», «билет 46», «питання 12б», «12б», «46 білет» → { num, sub }.
+const TICKET_RE = /^\s*(?:(?:б[іи]л[еє]т|питання|вопрос|№)\s*)?(\d{1,3})\s*([абвгabcd])?\)?\s*(?:б[іи]л[еє]т)?\s*[.!?]?\s*$/i;
+const LATIN_SUB = { a: "а", b: "б", c: "в", d: "г" };
+
+export function parseTicketQuery(text) {
+  const m = String(text || "").match(TICKET_RE);
+  if (!m) return null;
+  const sub = m[2] ? (LATIN_SUB[m[2].toLowerCase()] || m[2].toLowerCase()) : null;
+  return { num: Number(m[1]), sub };
+}
+
+// Найти билет в текстовых материалах (разметка «## Білет N. Назва», «### Nа) …»).
+// Возвращает { title, md } — готовый текст из конспекта, без запроса к Claude.
+export function findTicket(list, query) {
+  const q = typeof query === "string" ? parseTicketQuery(query) : query;
+  if (!q) return null;
+  for (const mat of list) {
+    if (mat.kind !== "text") continue;
+    const text = mat.data;
+    const head = new RegExp(`^##\\s+(?:Б[іи]лет|Билет)\\s+${q.num}\\b[^\\n]*$`, "mi").exec(text);
+    if (!head) continue;
+    const rest = text.slice(head.index + head[0].length);
+    const next = rest.search(/^##\s/m);
+    let section = (next === -1 ? rest : rest.slice(0, next)).replace(/\n-{3,}\s*$/, "").trim();
+    let title = head[0].replace(/^#+\s*/, "");
+    if (q.sub) {
+      const subHead = new RegExp(`^###\\s+${q.num}\\s*${q.sub}\\)[^\\n]*$`, "mi").exec(section);
+      if (subHead) {
+        const after = section.slice(subHead.index + subHead[0].length);
+        const end = after.search(/^###\s/m);
+        section = (end === -1 ? after : after.slice(0, end)).trim();
+        title = subHead[0].replace(/^#+\s*/, "") + " (білет " + q.num + ")";
+      }
+    }
+    return { title, md: section, source: mat.name };
+  }
+  return null;
+}

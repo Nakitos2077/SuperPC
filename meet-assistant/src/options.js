@@ -82,7 +82,7 @@ $("tgTest").onclick = async () => {
 
 // ---------------------------------------------------------------- Презентации
 import JSZip from "jszip";
-import { loadMaterials, addMaterials, deleteMaterial, MAX_TOTAL_BYTES, MAX_TOTAL_PAGES } from "./materials.js";
+import { loadMaterials, addMaterials, deleteMaterial, updateMaterial, MAX_TOTAL_BYTES, MAX_TOTAL_PAGES } from "./materials.js";
 
 const fmtSize = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " МБ" : Math.ceil(n / 1024) + " КБ");
 
@@ -139,12 +139,17 @@ async function renderMaterials() {
       className: "meta",
       textContent: m.kind === "pdf" ? `PDF · ~${m.pages} стр. · ${fmtSize(m.size)}` : `текст · ${fmtSize(m.size)}`,
     });
+    // «🤖» — отправлять ли этот файл Claude. Выключено = файл только для просмотра билетов (дешевле).
+    const ai = Object.assign(document.createElement("label"), { className: "ai", title: "Отправлять этот файл Claude вместе с вопросами" });
+    const aiBox = Object.assign(document.createElement("input"), { type: "checkbox", checked: m.claude !== false });
+    aiBox.onchange = async () => { await updateMaterial({ ...m, claude: aiBox.checked }); renderMaterials(); };
+    ai.append(aiBox, " 🤖 Claude");
     const del = Object.assign(document.createElement("button"), { textContent: "Удалить" });
     del.onclick = async () => {
       await deleteMaterial(m.id);
       renderMaterials();
     };
-    row.append(name, meta, del);
+    row.append(name, meta, ai, del);
     box.append(row);
   });
   const bytes = list.reduce((n, m) => n + m.size, 0);
