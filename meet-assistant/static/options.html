@@ -109,6 +109,9 @@
 
 <label>📨 Telegram: отправлять скрины и ответы в чат с ботом</label>
 <label class="check"><input id="tgEnabled" type="checkbox"> Включить: каждый скрин сразу приходит фото, а следом — ответ Claude</label>
+<label class="check"><input id="tgBot" type="checkbox"> 💬 Отвечать в боте: пишешь боту вопрос или фото задания — Claude отвечает (только получателям из списка)</label>
+<div class="hint">Бот работает, пока открыт Chrome. Помнит последние сообщения — можно задавать уточняющие вопросы
+  (удобно «ответом» на сообщение). Команда <code>/new</code> — начать разговор заново.</div>
 <ol class="hint tg-steps">
   <li>В Telegram открой <b>@BotFather</b> → <code>/newbot</code> → придумай имя → скопируй токен вида <code>123456:ABC...</code>.</li>
   <li>Вставь токен ниже. Открой своего нового бота и отправь ему <code>/start</code>.</li>

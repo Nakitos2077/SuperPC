@@ -12,6 +12,7 @@ const options = {
     background: "src/background.js",
     content: "src/content.js",
     "page-hook": "src/page-hook.js",
+    offscreen: "src/offscreen.js",
     options: "src/options.js",
   },
   outdir: "dist",

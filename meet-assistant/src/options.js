@@ -1,5 +1,5 @@
 import { DEFAULTS, loadSettings } from "./settings.js";
-import { findChats, chatIds, sendText } from "./telegram.js";
+import { chatIds, sendText } from "./telegram.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -54,7 +54,10 @@ $("tgFind").onclick = async () => {
   if (!token) return tgStatus("Сначала вставь токен бота.", true);
   tgStatus("Ищу…");
   try {
-    const chats = await findChats(token);
+    // Спрашиваем через фон: если бот уже слушает сообщения, Telegram не даст читать их второй раз.
+    const r = await chrome.runtime.sendMessage({ type: "tg-find", token });
+    if (r?.error) throw new Error(r.error);
+    const chats = r?.chats || [];
     if (!chats.length) return tgStatus("Бот пока не получил сообщений. Каждый получатель должен открыть бота и нажать Start (в группе — написать /start), потом нажми ещё раз.", true);
     // Добавляем найденные чаты к уже указанным (никого не теряем).
     const ids = new Set(chatIds({ tgChatId: $("tgChatId").value }));

@@ -3,7 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { loadSettings } from "./settings.js";
 import { loadMaterials, materialBlocks } from "./materials.js";
-import { telegramReady, sendPhoto, sendText, sendAnswerImage } from "./telegram.js";
+import { telegramReady, sendPhoto, sendText, sendAnswerImage, chatIds, call, form, sendTyping, downloadFile, findChats } from "./telegram.js";
 
 // Модели, для которых доступен серверный fallback при отказе (refusal).
 const FALLBACK_MODELS = new Set(["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-2"]);
@@ -422,9 +422,16 @@ chrome.runtime.onConnect.addListener((port) => {
           .then(async ([photoIds, img]) => {
             if (!photoIds || !Object.keys(photoIds).length) return;
             const errors = [];
-            if (img) errors.push(...(await sendAnswerImage(s, img.png, img.height, img.width, photoIds, "✳ Ответ Claude")).errors);
-            else if (main) errors.push(...(await sendText(s, main, photoIds)).errors);
+            let answerIds = null;
+            const sent = img ? await sendAnswerImage(s, img.png, img.height, img.width, photoIds, "✳ Ответ Claude")
+              : main ? await sendText(s, main, photoIds) : null;
+            if (sent) { errors.push(...sent.errors); answerIds = sent.results; }
             if (own) errors.push(...(await sendText(s, `${title || "🗣 Своїми словами"}\n\n${own}`, photoIds)).errors);
+            // Запоминаем ответ на скрин — чтобы в боте можно было задать уточняющий вопрос.
+            for (const chat of Object.keys(photoIds)) {
+              await rememberTurn(chat, "user", "[скрин екрана з завданням]" + (msg.question ? " " + msg.question : ""), photoIds[chat]);
+              await rememberTurn(chat, "assistant", main, answerIds?.[chat]);
+            }
             const n = Object.keys(photoIds).length;
             send(errors.length ? { type: "tg", ok: false, error: errors.join("; ") } : { type: "tg", ok: true, count: n });
           })
@@ -446,3 +453,239 @@ chrome.runtime.onConnect.addListener((port) => {
 });
 
 chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+
+// ================================================================== Telegram-бот
+// Пишешь боту вопрос (или фото задания) — Claude отвечает прямо в Telegram.
+// Отвечаем только чатам из списка получателей в настройках. Бот помнит последние реплики
+// разговора и ответы на скрины, поэтому можно задавать уточняющие вопросы (в т.ч. ответом на сообщение).
+// Если открыта встреча — Claude видит и её расшифровку.
+
+const BOT_HISTORY_MAX = 12;               // реплик в памяти на чат
+const BOT_HISTORY_TTL = 3 * 60 * 60 * 1000; // забываем разговор через 3 часа тишины
+const BOT_NOTE =
+  "\n\nСейчас вопрос пришёл не из встречи, а из Telegram-чата с ботом: пользователь пишет тебе сам. " +
+  "Отвечай как в обычном чате — полно и по делу. Если вопрос уточняющий («а почему…», «поясни шаг 2») — " +
+  "опирайся на предыдущие сообщения и на процитированное сообщение.";
+
+let botPolling = false;
+
+function botEnabled(s) {
+  return !!(s.tgEnabled && s.tgBot && s.tgToken);
+}
+
+async function botState() {
+  const { tgHistory = {}, tgLog = {}, tgSeen = {}, tgOffset = 0 } =
+    await chrome.storage.local.get(["tgHistory", "tgLog", "tgSeen", "tgOffset"]);
+  return { tgHistory, tgLog, tgSeen, tgOffset };
+}
+
+// Запомнить реплику в истории чата (для уточняющих вопросов).
+async function rememberTurn(chat, role, text, messageId) {
+  const { tgHistory, tgLog } = await botState();
+  const now = Date.now();
+  let h = (tgHistory[chat] || []).filter((t) => now - t.at < BOT_HISTORY_TTL);
+  h.push({ role, text: String(text).slice(0, 6000), at: now });
+  h = h.slice(-BOT_HISTORY_MAX);
+  tgHistory[chat] = h;
+  if (messageId) {
+    tgLog[`${chat}:${messageId}`] = String(text).slice(0, 6000);
+    const keys = Object.keys(tgLog);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 150))) delete tgLog[k];
+  }
+  await chrome.storage.local.set({ tgHistory, tgLog });
+}
+
+// Расшифровка открытой встречи (если есть) — спрашиваем вкладку, ждём не больше секунды.
+function meetingTranscript() {
+  const port = [...ports].pop();
+  if (!port) return Promise.resolve("");
+  return new Promise((resolve) => {
+    const reqId = `tr-${Date.now()}-${Math.random()}`;
+    const done = (text) => { port.onMessage.removeListener(onMsg); clearTimeout(t); resolve(text || ""); };
+    const onMsg = (m) => { if (m?.type === "transcript" && m.reqId === reqId) done(m.text); };
+    const t = setTimeout(() => done(""), 1000);
+    port.onMessage.addListener(onMsg);
+    try { port.postMessage({ type: "get-transcript", reqId }); } catch { done(""); }
+  });
+}
+
+// Картинка ответа без открытой встречи — через скрытый offscreen-документ.
+async function renderViaOffscreen(text) {
+  try {
+    if (!(await chrome.offscreen.hasDocument?.())) {
+      await chrome.offscreen.createDocument({
+        url: "offscreen.html",
+        reasons: ["DOM_PARSER"],
+        justification: "Рисуем ответ Claude (формулы, код) картинкой для Telegram.",
+      });
+    }
+    const r = await chrome.runtime.sendMessage({ target: "offscreen", type: "render-answer", text });
+    return r?.png ? r : null;
+  } catch {
+    return null;
+  }
+}
+
+const NEEDS_IMAGE = /\$|```|<svg|\\\(|\\\[/; // формулы, код, рисунки — Telegram их не покажет
+
+async function botReply(s, chat, text, replyTo) {
+  const one = { ...s, tgChatId: chat };
+  const { main, own, title } = splitOwnWords(text);
+  let answerId = null;
+  if (main) {
+    const img = NEEDS_IMAGE.test(main) ? await renderViaOffscreen(main) : null;
+    const r = img
+      ? await sendAnswerImage(one, img.png, img.height, img.width, { [chat]: replyTo }, "✳ Ответ Claude")
+      : await sendText(one, main, { [chat]: replyTo });
+    answerId = r.results[chat];
+  }
+  if (own) await sendText(one, `${title || "🗣 Своїми словами"}\n\n${own}`, { [chat]: replyTo });
+  return answerId;
+}
+
+async function handleBotMessage(s, msg) {
+  const chat = String(msg.chat.id);
+  const name = msg.chat.title || [msg.chat.first_name, msg.chat.last_name].filter(Boolean).join(" ") || msg.chat.username || "";
+  const { tgSeen } = await botState();
+  tgSeen[chat] = { id: chat, name, group: msg.chat.type !== "private" };
+  await chrome.storage.local.set({ tgSeen });
+
+  const text = (msg.text || msg.caption || "").trim();
+  const allowed = chatIds(s).includes(chat);
+  const one = { ...s, tgChatId: chat };
+  if (!allowed) {
+    if (/^\/start/.test(text)) {
+      await sendText(one, "👋 Бот бачить цей чат. Щоб отримувати відповіді, власник має натиснути «Найти chat id» у налаштуваннях Meet Assistant.").catch(() => {});
+    }
+    return;
+  }
+  if (/^\/start/.test(text)) {
+    await sendText(one, "✅ Напиши будь-яке питання або надішли фото завдання — я відповім. /new — почати розмову заново.");
+    return;
+  }
+  if (/^\/new/.test(text)) {
+    const { tgHistory } = await botState();
+    delete tgHistory[chat];
+    await chrome.storage.local.set({ tgHistory });
+    await sendText(one, "🧹 Почнемо спочатку.");
+    return;
+  }
+
+  if (!s.apiKey) { await sendText(one, "⚠️ Не задан API-ключ Anthropic у налаштуваннях розширення."); return; }
+
+  const typing = setInterval(() => sendTyping(s.tgToken, chat), 4500);
+  sendTyping(s.tgToken, chat);
+  try {
+    // Фото: берём самое большое из присланных размеров.
+    let image = null;
+    const photo = msg.photo?.[msg.photo.length - 1] ||
+      (msg.document?.mime_type?.startsWith("image/") ? msg.document : null);
+    if (photo) image = await downloadFile(s.tgToken, photo.file_id);
+
+    const { tgHistory, tgLog } = await botState();
+    const history = (tgHistory[chat] || []).filter((t) => Date.now() - t.at < BOT_HISTORY_TTL);
+    const quoted = msg.reply_to_message
+      ? tgLog[`${chat}:${msg.reply_to_message.message_id}`] || msg.reply_to_message.text || msg.reply_to_message.caption || ""
+      : "";
+    const transcript = await meetingTranscript();
+    const materials = await loadMaterials();
+
+    let q = "";
+    if (transcript) q += "<transcript>\n" + transcript.slice(-s.transcriptChars) + "\n</transcript>\n\n";
+    if (quoted) q += "Я отвечаю на это сообщение:\n<quoted>\n" + quoted + "\n</quoted>\n\n";
+    if (image) q += TASKS.screenshot + (text ? "\n\nМой вопрос к фото: " + text : "");
+    else q += "Мой вопрос: " + text;
+    q += "\n\n" + CODE_RULE;
+    if (s.ownWords) q += "\n\n" + OWN_WORDS_RULE;
+    q += "\n\n" + languageRule(s);
+
+    // История — чередование user/assistant, начинается с user.
+    const messages = [];
+    for (const t of history) {
+      if (!messages.length && t.role !== "user") continue;
+      const last = messages[messages.length - 1];
+      if (last && last.role === t.role) last.content += "\n\n" + t.text;
+      else messages.push({ role: t.role, content: t.text });
+    }
+    if (messages.length && messages[messages.length - 1].role === "user") messages.pop();
+    const content = [...materialBlocks(materials)];
+    if (image) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: image } });
+    content.push({ type: "text", text: q });
+    messages.push({ role: "user", content });
+
+    const client = new Anthropic({ apiKey: s.apiKey, dangerouslyAllowBrowser: true });
+    const base = baseParams(s, materials);
+    const final = await client.beta.messages.stream({
+      ...base,
+      system: base.system + BOT_NOTE,
+      max_tokens: 16000,
+      messages,
+    }).finalMessage();
+
+    if (final.stop_reason === "refusal") { await sendText(one, "⚠️ Модель відмовилась відповідати на це питання.", { [chat]: msg.message_id }); return; }
+    let answer = final.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+    if (final.stop_reason === "max_tokens") answer += "\n\n(відповідь обрізана — запитай решту окремо)";
+    if (!answer) { await sendText(one, "🤷 Порожня відповідь, спробуй переформулювати.", { [chat]: msg.message_id }); return; }
+
+    const answerId = await botReply(s, chat, answer, msg.message_id);
+    await rememberTurn(chat, "user", (image ? "[фото завдання] " : "") + (text || ""), msg.message_id);
+    await rememberTurn(chat, "assistant", answer, answerId);
+  } catch (err) {
+    await sendText(one, "⚠️ " + (errorText(err) || "Помилка"), { [chat]: msg.message_id }).catch(() => {});
+  } finally {
+    clearInterval(typing);
+  }
+}
+
+// Долгий опрос Telegram (getUpdates). Работает, пока жив service worker; будильник раз в 30 с
+// перезапускает опрос, если Chrome его усыпил. Сообщения обрабатываются по очереди.
+async function botPoll() {
+  if (botPolling) return;
+  botPolling = true;
+  try {
+    for (;;) {
+      const s = await loadSettings();
+      if (!botEnabled(s)) break;
+      const { tgOffset } = await botState();
+      let updates;
+      try {
+        updates = await call(s.tgToken, "getUpdates", form({
+          offset: String(tgOffset), timeout: "25", allowed_updates: JSON.stringify(["message"]),
+        }));
+      } catch (e) {
+        await new Promise((r) => setTimeout(r, 5000));
+        continue;
+      }
+      // Защита: уже обработанные сообщения пропускаем, а «пустые» ответы не крутим чаще раза в секунду.
+      const fresh = updates.filter((u) => u.update_id >= tgOffset);
+      if (!fresh.length) { await new Promise((r) => setTimeout(r, 1000)); continue; }
+      for (const u of fresh) {
+        await chrome.storage.local.set({ tgOffset: u.update_id + 1 });
+        if (u.message) await handleBotMessage(s, u.message).catch(() => {});
+      }
+    }
+  } finally {
+    botPolling = false;
+  }
+}
+
+chrome.alarms.create("tg-poll", { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "tg-poll") botPoll(); });
+chrome.storage.onChanged.addListener((ch) => { if (ch.tgEnabled || ch.tgBot || ch.tgToken) botPoll(); });
+botPoll();
+
+// Страница настроек: «Найти chat id». Пока бот слушает сообщения, getUpdates занят им —
+// поэтому отдаём чаты, которые бот уже видел; иначе спрашиваем Telegram напрямую.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== "tg-find") return;
+  (async () => {
+    const { tgSeen } = await botState();
+    let chats = Object.values(tgSeen);
+    if (!botPolling) {
+      try { chats = [...new Map([...chats, ...(await findChats(msg.token))].map((c) => [c.id, c])).values()]; }
+      catch (e) { if (!chats.length) return sendResponse({ error: e.message }); }
+    }
+    sendResponse({ chats });
+  })();
+  return true;
+});

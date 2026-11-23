@@ -5,7 +5,7 @@
 const API = (token, method) => `https://api.telegram.org/bot${token}/${method}`;
 const MAX_TEXT = 4000; // лимит Telegram — 4096 символов на сообщение
 
-async function call(token, method, body) {
+export async function call(token, method, body) {
   const res = await fetch(API(token, method), { method: "POST", body });
   let data = null;
   try { data = await res.json(); } catch {}
@@ -13,7 +13,7 @@ async function call(token, method, body) {
   return data.result;
 }
 
-function form(fields) {
+export function form(fields) {
   const f = new FormData();
   for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) f.append(k, v);
   return f;
@@ -64,7 +64,7 @@ export async function sendAnswerImage(s, pngBase64, height, width, replyTo, capt
       allow_sending_without_reply: "true",
     });
     f.append(asPhoto ? "photo" : "document", file, "answer.png");
-    await call(s.tgToken, asPhoto ? "sendPhoto" : "sendDocument", f);
+    return (await call(s.tgToken, asPhoto ? "sendPhoto" : "sendDocument", f)).message_id;
   });
 }
 
@@ -73,15 +73,34 @@ export async function sendText(s, text, replyTo) {
   const parts = [];
   for (let i = 0; i < text.length; i += MAX_TEXT) parts.push(text.slice(i, i + MAX_TEXT));
   return eachChat(s, async (chat) => {
+    let first = null;
     for (const [i, part] of parts.entries()) {
-      await call(s.tgToken, "sendMessage", form({
+      const m = await call(s.tgToken, "sendMessage", form({
         chat_id: chat,
         text: part,
         reply_to_message_id: i === 0 && replyTo?.[chat] ? String(replyTo[chat]) : undefined,
         allow_sending_without_reply: "true",
       }));
+      first ??= m.message_id;
     }
+    return first;
   });
+}
+
+// «Печатает…» в чате, пока Claude думает.
+export function sendTyping(token, chat) {
+  return call(token, "sendChatAction", form({ chat_id: chat, action: "typing" })).catch(() => {});
+}
+
+// Скачать файл из Telegram (фото, присланное боту) — base64.
+export async function downloadFile(token, fileId) {
+  const file = await call(token, "getFile", form({ file_id: fileId }));
+  const res = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
+  if (!res.ok) throw new Error("не удалось скачать фото: HTTP " + res.status);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 // Все чаты, которые писали боту (каждый получатель нажимает Start; в группе — пишет /start@имя_бота).

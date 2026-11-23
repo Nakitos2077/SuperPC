@@ -16,6 +16,7 @@ export const DEFAULTS = {
   webSearch: true, // поиск в интернете для фактов (Sonnet/Opus/Fable; у Haiku не работает)
   ownWords: true, // в конце ответа — объяснение своими словами от первого лица (в Telegram — отдельным текстом)
   tgEnabled: false, // отправлять скрины и ответы в Telegram
+  tgBot: true, // отвечать на вопросы, которые пишут боту в Telegram
   tgToken: "",
   tgChatId: "",
 };
