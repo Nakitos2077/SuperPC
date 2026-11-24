@@ -486,12 +486,16 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     b.innerHTML = thumb + '<span class="cap"><b>' + p.short + "</b>" + (p.desc ? "<small>" + p.desc + "</small>" : "") + "</span>";
     b.setAttribute("aria-label", p.title);
     b.addEventListener("click", () => {
-      state.place = p;
-      opts.querySelectorAll(".opt").forEach((o) => o.setAttribute("aria-checked", String(o === b)));
-      $("to2").disabled = false;
+      // повторное нажатие снимает выбор
+      state.place = state.place === p ? null : p;
+      opts.querySelectorAll(".opt").forEach((o) => o.setAttribute("aria-checked", String(state.place === p && o === b)));
+      updateTo2();
     });
     opts.appendChild(b);
   });
+  // дальше можно, если выбрана карточка или написан свой вариант
+  function updateTo2() { $("to2").disabled = !(state.place || $("note").value.trim()); }
+  $("note").addEventListener("input", updateTo2);
   $("to2").addEventListener("click", () => go(2));
 
   // ---------- день и время ----------
@@ -649,11 +653,14 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     const s = state.day.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
+  // Без выбранной карточки её текст и есть ответ «куда»; с карточкой это дополнение.
+  function placeText() { return state.place ? state.place.title : $("note").value.trim(); }
+  function extraNote() { return state.place ? $("note").value.trim() : ""; }
   function renderResult() {
-    $("r-place").textContent = state.place.title;
+    $("r-place").textContent = placeText();
     $("r-day").textContent = dayLong();
     $("r-time").textContent = state.hour + ":00";
-    const note = $("note").value.trim();
+    const note = extraNote();
     $("r-note").textContent = note;
     $("r-note-row").hidden = !note;
     $("r-meet").textContent = state.meet ? state.meet.label : "";
@@ -672,7 +679,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     $("retry").hidden = st !== "failed";
   }
   function answerFields() {
-    return { place: state.place.title, day: dayLong(), time: state.hour + ":00", note: $("note").value.trim(),
+    return { place: placeText(), day: dayLong(), time: state.hour + ":00", note: extraNote(),
       meet: state.meet ? state.meet.label : "",
       meetLink: state.meet ? "https://maps.google.com/?q=" + state.meet.lat + "," + state.meet.lng : "" };
   }
@@ -717,7 +724,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     return { ok: results.some((r) => r.ok), reached: results.some((r) => r.reached) };
   }
   async function sendAnswer() {
-    const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour + "|" + $("note").value.trim() + "|" + (state.meet ? state.meet.lat + "," + state.meet.lng + state.meet.label : "");
+    const key = (state.place ? state.place.id : "own") + "|" + placeText() + "|" + state.day.toDateString() + "|" + state.hour + "|" + $("note").value.trim() + "|" + (state.meet ? state.meet.lat + "," + state.meet.lng + state.meet.label : "");
     if (key === lastSent) { setStatus("sent", "Ответ отправлен. До встречи!"); return; }
     const my = ++sending;
     setStatus("sending", "");
