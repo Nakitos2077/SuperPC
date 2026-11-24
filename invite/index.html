@@ -15,15 +15,16 @@
   --bg: #EAF1FB;
   --dot: #D3DEF0;
   --surface: #FFFFFF;
-  --ink: #18233F;
-  --muted: #5B6782;
-  --line: #D8E0EE;
-  --chip: #F2F5FB;
+  --ink: #2B2118;
+  --muted: #6E6152;
+  --line: #E6DCCD;
+  --chip: rgba(60, 40, 20, .06);
   --accent: #EC3F7A;
   --accent-soft: #FDE3EC;
   --accent-ink: #FFFFFF;
   --sun: #FFC53D;
-  --veil: rgba(234, 241, 251, .08);
+  --veil: rgba(234, 241, 251, .06);
+  --card: rgba(255, 252, 247, .84);
   --field: #90704A;
   --shadow: rgba(24, 35, 63, .22);
   --display: "Unbounded", "Arial Rounded MT Bold", system-ui, sans-serif;
@@ -31,17 +32,19 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0F1528; --dot: #1B2440; --surface: #18213A; --ink: #EEF2FF; --muted: #A3AECB;
-    --line: #2B3658; --chip: #212C4A; --accent: #FF5E93; --accent-soft: #3A2241; --accent-ink: #FFFFFF;
+    --bg: #1A1510; --dot: #2A2219; --surface: #2A221A; --ink: #F7F1E8; --muted: #CDBFAD;
+    --line: rgba(255, 240, 220, .16); --chip: rgba(255, 240, 220, .09); --accent: #FF5E93; --accent-soft: rgba(255, 94, 147, .22); --accent-ink: #FFFFFF;
     --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
-    --veil: rgba(10, 15, 30, .55);
+    --veil: rgba(20, 14, 8, .38);
+    --card: rgba(30, 23, 16, .66);
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0F1528; --dot: #1B2440; --surface: #18213A; --ink: #EEF2FF; --muted: #A3AECB;
-  --line: #2B3658; --chip: #212C4A; --accent: #FF5E93; --accent-soft: #3A2241; --accent-ink: #FFFFFF;
+  --bg: #1A1510; --dot: #2A2219; --surface: #2A221A; --ink: #F7F1E8; --muted: #CDBFAD;
+  --line: rgba(255, 240, 220, .16); --chip: rgba(255, 240, 220, .09); --accent: #FF5E93; --accent-soft: rgba(255, 94, 147, .22); --accent-ink: #FFFFFF;
   --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
-  --veil: rgba(10, 15, 30, .55);
+  --veil: rgba(20, 14, 8, .38);
+  --card: rgba(30, 23, 16, .66);
 }
 
 html, body { height: 100%; }
@@ -67,7 +70,9 @@ body {
   width: 100%;
   max-width: 520px;
   box-sizing: border-box;
-  background: var(--surface);
+  background: var(--card);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  backdrop-filter: blur(18px) saturate(1.15);
   border-radius: 28px;
   padding: 28px clamp(20px, 5vw, 36px) 30px;
   box-shadow: 0 24px 60px -24px var(--shadow);
@@ -130,7 +135,7 @@ p { margin: 0; }
 /* photo tiles: the picture fills the card, the caption sits on it */
 .opt { position: relative; overflow: hidden; aspect-ratio: 3 / 4; max-width: 100%; padding: 0; border-width: 3px; justify-content: flex-end !important; gap: 0; }
 .thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
-.thumb-icon { display: grid; place-items: center; padding-bottom: 28%; box-sizing: border-box; background: linear-gradient(160deg, #34467A, #1B2443); }
+.thumb-icon { display: grid; place-items: center; padding-bottom: 28%; box-sizing: border-box; background: url("bg.jpg") 50% 50% / cover no-repeat; }
 .opt .thumb-icon svg { width: 56px; height: 56px; color: rgba(255, 255, 255, .9); }
 .opt::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(8, 12, 24, .9), rgba(8, 12, 24, .55) 45%, rgba(8, 12, 24, 0) 78%); pointer-events: none; }
 .cap { position: relative; z-index: 1; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 10px 14px; text-align: center; }
