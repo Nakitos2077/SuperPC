@@ -178,6 +178,14 @@ p { margin: 0; }
 .hour:disabled { opacity: .3; cursor: not-allowed; text-decoration: line-through; }
 .hour[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
 .part { display: flex; flex-direction: column; gap: 10px; }
+textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; border-radius: 14px;
+  border: 2px solid var(--line); background: var(--chip); color: var(--ink); padding: 12px 14px;
+  font: 500 1rem/1.4 var(--body);
+}
+textarea::placeholder { color: var(--muted); opacity: .8; }
+textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.row dd { overflow-wrap: anywhere; white-space: pre-wrap; }
 
 /* ticket */
 .ticket {
@@ -297,6 +305,10 @@ p { margin: 0; }
         <h3 id="hours-h">Время</h3>
         <div class="hours" id="hours" role="radiogroup" aria-labelledby="hours-h"></div>
       </div>
+      <div class="part">
+        <h3><label for="note">Добавить своё</label></h3>
+        <textarea id="note" rows="2" maxlength="500" placeholder="Необязательно. Например: возьму плед или хочу на закат"></textarea>
+      </div>
       <div class="nav">
         <button class="btn btn-ghost" type="button" data-go="1">Назад</button>
         <button class="btn btn-next" id="to3" type="button" disabled>Готово</button>
@@ -316,6 +328,7 @@ p { margin: 0; }
           <div class="row"><dt>Куда</dt><dd id="r-place"></dd></div>
           <div class="row"><dt>День</dt><dd id="r-day"></dd></div>
           <div class="row"><dt>Время</dt><dd id="r-time"></dd></div>
+          <div class="row" id="r-note-row" hidden><dt>Ещё</dt><dd id="r-note"></dd></div>
         </dl>
       </div>
       <button class="btn btn-ghost" type="button" data-go="1">Изменить выбор</button>
@@ -500,6 +513,9 @@ p { margin: 0; }
     $("r-place").textContent = state.place.title;
     $("r-day").textContent = dayLong();
     $("r-time").textContent = state.hour + ":00";
+    const note = $("note").value.trim();
+    $("r-note").textContent = note;
+    $("r-note-row").hidden = !note;
     sendAnswer();
   }
 
@@ -514,7 +530,7 @@ p { margin: 0; }
     $("retry").hidden = st !== "failed";
   }
   function answerFields() {
-    return { place: state.place.title, day: dayLong(), time: state.hour + ":00" };
+    return { place: state.place.title, day: dayLong(), time: state.hour + ":00", note: $("note").value.trim() };
   }
   async function post(url, body) {
     const ctrl = new AbortController();
@@ -533,7 +549,8 @@ p { margin: 0; }
     const token = CONFIG.tgToken.join("");
     if (!token || !CONFIG.tgChatId) return null;
     const f = answerFields();
-    const text = "Ответ на приглашение: да!\nКуда: " + f.place + "\nДень: " + f.day + "\nВремя: " + f.time;
+    let text = "Ответ на приглашение: да!\nКуда: " + f.place + "\nДень: " + f.day + "\nВремя: " + f.time;
+    if (f.note) text += "\nДополнение: " + f.note;
     const r = await post("https://api.telegram.org/bot" + token + "/sendMessage",
       new URLSearchParams({ chat_id: CONFIG.tgChatId, text }));
     return { reached: r.reached, ok: r.ok && r.data.ok === true };
@@ -545,7 +562,7 @@ p { margin: 0; }
       _subject: "Ответ на приглашение: " + f.place + ", " + f.day + ", " + f.time,
       _template: "table",
       _captcha: "false",
-      "Ответ": "Да", "Куда": f.place, "День": f.day, "Время": f.time
+      "Ответ": "Да", "Куда": f.place, "День": f.day, "Время": f.time, "Дополнение": f.note || "—"
     }));
     return { reached: r.reached, ok: r.ok && String(r.data.success) === "true" };
   }
@@ -555,7 +572,7 @@ p { margin: 0; }
     return { ok: results.some((r) => r.ok), reached: results.some((r) => r.reached) };
   }
   async function sendAnswer() {
-    const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour;
+    const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour + "|" + $("note").value.trim();
     if (key === lastSent) { setStatus("sent", "Ответ отправлен. До встречи!"); return; }
     const my = ++sending;
     setStatus("sending", "");
