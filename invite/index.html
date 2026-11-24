@@ -25,6 +25,11 @@
   --sun: #FFC53D;
   --veil: rgba(234, 241, 251, .06);
   --card: rgba(255, 252, 247, .84);
+  --glass-a: rgba(255, 197, 61, .32);
+  --glass-b: rgba(236, 63, 122, .26);
+  --glass-line: rgba(43, 33, 24, .55);
+  --glass-sole: rgba(255, 255, 255, .5);
+  --glass-shine: rgba(255, 255, 255, .9);
   --field: #90704A;
   --shadow: rgba(24, 35, 63, .22);
   --display: "Unbounded", "Arial Rounded MT Bold", system-ui, sans-serif;
@@ -37,6 +42,7 @@
     --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
     --veil: rgba(20, 14, 8, .38);
     --card: rgba(30, 23, 16, .66);
+  --glass-a: rgba(255, 226, 150, .46); --glass-b: rgba(255, 165, 195, .44); --glass-line: rgba(255, 248, 238, .85); --glass-sole: rgba(255, 248, 238, .24); --glass-shine: rgba(255, 255, 255, .75);
   }
 }
 :root[data-theme="dark"] {
@@ -45,6 +51,7 @@
   --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
   --veil: rgba(20, 14, 8, .38);
   --card: rgba(30, 23, 16, .66);
+  --glass-a: rgba(255, 226, 150, .46); --glass-b: rgba(255, 165, 195, .44); --glass-line: rgba(255, 248, 238, .85); --glass-sole: rgba(255, 248, 238, .24); --glass-shine: rgba(255, 255, 255, .75);
 }
 
 html, body { height: 100%; }
@@ -90,13 +97,14 @@ p { margin: 0; }
 .center { text-align: center; align-items: center; }
 
 .hero-art { width: 190px; max-width: 70%; height: auto; }
-.cup-a { fill: var(--sun); }
-.cup-b { fill: var(--accent); }
-.sole { fill: var(--surface); stroke: var(--ink); stroke-width: 3; stroke-linejoin: round; }
+.cup-a { fill: var(--glass-a); }
+.cup-b { fill: var(--glass-b); }
+.sole { fill: var(--glass-sole); stroke: var(--glass-line); stroke-width: 3; stroke-linejoin: round; }
+.shine { fill: none; stroke: var(--glass-shine); stroke-width: 2.2; stroke-linecap: round; }
 .walk { transform-box: fill-box; transform-origin: 50% 100%; animation: walk 1.6s ease-in-out infinite; }
 .walk-2 { animation-delay: .8s; }
 @keyframes walk { 0%, 50%, 100% { transform: none; } 22% { transform: translateY(-7px) rotate(-7deg); } }
-.cup-line { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.cup-line { fill: none; stroke: var(--glass-line); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 
 /* buttons */
 .btn {
@@ -186,7 +194,6 @@ p { margin: 0; }
 .status[data-state="sent"] .dotx { background: #1FA855; }
 .status[data-state="failed"] .dotx { background: var(--accent); }
 @keyframes pulse { 50% { opacity: .3; } }
-.fallback { display: flex; flex-direction: column; gap: 12px; }
 .share { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .share a, .share button {
   display: flex; align-items: center; justify-content: center; text-align: center; gap: 6px;
@@ -243,6 +250,7 @@ p { margin: 0; }
               <path class="cup-line" d="M6 30V10q0-4 4-4h12q4 0 6 4l4 6q8 2 18 6 14 2 16 8z"/>
               <path class="sole" d="M3 30h65q1 7-6 7H9q-6 0-6-7z"/>
               <path class="cup-line" d="M29 15l5-4M33 18l5-4M37 20l5-4M52 23q5 3 6 7"/>
+              <path class="shine" d="M10 25V12q0-2 2-2h7M45 24q8 1 13 3"/>
           </g>
         </g>
         <g transform="translate(84 44)">
@@ -251,6 +259,7 @@ p { margin: 0; }
               <path class="cup-line" d="M6 30V10q0-4 4-4h12q4 0 6 4l4 6q8 2 18 6 14 2 16 8z"/>
               <path class="sole" d="M3 30h65q1 7-6 7H9q-6 0-6-7z"/>
               <path class="cup-line" d="M29 15l5-4M33 18l5-4M37 20l5-4M52 23q5 3 6 7"/>
+              <path class="shine" d="M10 25V12q0-2 2-2h7M45 24q8 1 13 3"/>
           </g>
         </g>
       </svg>
@@ -300,6 +309,7 @@ p { margin: 0; }
       <div class="part">
         <h2>Ура, договорились!</h2>
         <p class="status" id="status" data-state="sending" aria-live="polite"><span class="dotx"></span><span id="status-text">Отправляю ответ…</span></p>
+        <button class="btn btn-ghost retry" id="retry" type="button" hidden>Отправить ещё раз</button>
       </div>
       <div class="ticket">
         <dl>
@@ -307,15 +317,6 @@ p { margin: 0; }
           <div class="row"><dt>День</dt><dd id="r-day"></dd></div>
           <div class="row"><dt>Время</dt><dd id="r-time"></dd></div>
         </dl>
-      </div>
-      <div class="fallback" id="fallback" hidden>
-        <p class="msg-preview" id="msg"></p>
-        <div class="share">
-          <button class="copy" id="copy" type="button">Скопировать</button>
-          <a class="tg" id="tg" href="#" target="_blank" rel="noopener">Telegram</a>
-          <a class="wa" id="wa" href="#" target="_blank" rel="noopener">WhatsApp</a>
-        </div>
-        <p class="toast" id="toast" aria-live="polite"></p>
       </div>
       <button class="btn btn-ghost" type="button" data-go="1">Изменить выбор</button>
     </section>
@@ -491,34 +492,24 @@ p { margin: 0; }
     const s = state.day.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
-  function message() {
-    return "Да, пойдём гулять!\n" +
-      "Куда: " + state.place.title + "\n" +
-      "Когда: " + dayLong() + ", в " + state.hour + ":00";
-  }
   function renderResult() {
     $("r-place").textContent = state.place.title;
     $("r-day").textContent = dayLong();
     $("r-time").textContent = state.hour + ":00";
-    updateMsg();
     sendAnswer();
   }
 
   // ---------- автоотправка на почту ----------
   let lastSent = null, sending = 0;
-  function setStatus(s, text) {
-    $("status").dataset.state = s;
+  function setStatus(st, text) {
+    $("status").dataset.state = st;
     $("status-text").textContent = text;
-    $("fallback").hidden = s !== "failed";
+    $("retry").hidden = st !== "failed";
   }
-  async function sendAnswer() {
-    const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour;
-    if (key === lastSent) { setStatus("sent", "Ответ уже у меня на почте. До встречи!"); return; }
-    const my = ++sending;
-    setStatus("sending", "Отправляю ответ…");
+  async function postOnce() {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 12000);
     try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 12000);
       const res = await fetch("https://formsubmit.co/ajax/" + CONFIG.email, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -533,38 +524,34 @@ p { margin: 0; }
         }),
         signal: ctrl.signal
       });
-      clearTimeout(timer);
       const data = await res.json().catch(() => ({}));
-      if (my !== sending) return;
-      if (res.ok && String(data.success) === "true") {
-        lastSent = key;
-        setStatus("sent", "Ответ уже у меня на почте. До встречи!");
-      } else {
-        throw new Error(data.message || "send failed");
-      }
+      return res.ok && String(data.success) === "true";
     } catch (e) {
-      if (my !== sending) return;
-      setStatus("failed", "Не получилось отправить автоматически. Отправь ответ одной кнопкой:");
+      return false;
+    } finally {
+      clearTimeout(timer);
     }
   }
-  function updateMsg() {
-    const t = message();
-    $("msg").textContent = t;
-    $("tg").href = "https://t.me/share/url?url=" + encodeURIComponent(" ") + "&text=" + encodeURIComponent(t);
-    $("wa").href = "https://wa.me/?text=" + encodeURIComponent(t);
+  async function sendAnswer() {
+    const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour;
+    if (key === lastSent) { setStatus("sent", "Ответ отправлен. До встречи!"); return; }
+    const my = ++sending;
+    setStatus("sending", "Отправляю ответ…");
+    // несколько попыток, если интернет моргнул
+    for (const wait of [0, 2000, 5000]) {
+      if (wait) await new Promise((r) => setTimeout(r, wait));
+      if (my !== sending) return;
+      if (await postOnce()) {
+        if (my !== sending) return;
+        lastSent = key;
+        setStatus("sent", "Ответ отправлен. До встречи!");
+        return;
+      }
+    }
+    if (my !== sending) return;
+    setStatus("failed", "Не получилось отправить ответ. Проверь интернет и нажми кнопку ниже.");
   }
-  $("copy").addEventListener("click", () => {
-    const t = message();
-    const done = () => { $("toast").textContent = "Скопировано. Вставь в чат и отправь."; };
-    const fallback = () => {
-      const r = document.createRange(); r.selectNodeContents($("msg"));
-      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
-      $("toast").textContent = "Текст выделен: нажми «Копировать».";
-    };
-    try {
-      navigator.clipboard.writeText(t).then(done, fallback);
-    } catch (e) { fallback(); }
-  });
+  $("retry").addEventListener("click", sendAnswer);
 
   // ---------- конфетти ----------
   const cv = $("confetti"), ctx = cv.getContext("2d");
