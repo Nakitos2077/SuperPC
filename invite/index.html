@@ -186,15 +186,15 @@ p { margin: 0; }
 
 .photo-bg {
   position: fixed; inset: 0; z-index: -1;
-  /* photo keeps its own proportions: full width at the top, the field colour continues below it */
+  /* horizontal screens get the horizontal photo, phones get the vertical one: both fill the screen with almost no cropping */
   background-color: var(--field);
-  background-image:
-    linear-gradient(var(--veil), var(--veil)),
-    linear-gradient(to bottom, transparent calc(56.3vw - 48px), var(--field) 56.3vw),
-    url("bg.jpg");
-  background-size: 100% 100%, 100% 100%, 100% auto;
-  background-position: center top;
+  background-image: linear-gradient(var(--veil), var(--veil)), url("bg.jpg");
+  background-size: cover;
+  background-position: center;
   background-repeat: no-repeat;
+}
+@media (orientation: portrait) {
+  .photo-bg { background-image: linear-gradient(var(--veil), var(--veil)), url("bg-portrait.jpg"); }
 }
 #confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
 
