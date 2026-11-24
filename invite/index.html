@@ -179,7 +179,7 @@ p { margin: 0; }
 .hour[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
 .part { display: flex; flex-direction: column; gap: 10px; }
 textarea {
-  width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; border-radius: 14px;
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 52px; border-radius: 14px;
   border: 2px solid var(--line); background: var(--chip); color: var(--ink); padding: 12px 14px;
   font: 500 1rem/1.4 var(--body);
 }
@@ -287,6 +287,10 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
         <p class="lead">Выбери, что тебе больше нравится.</p>
       </div>
       <div class="opts" id="opts" role="radiogroup" aria-label="Место"></div>
+      <div class="part">
+        <h3><label for="note">Дополнение</label></h3>
+        <textarea id="note" rows="1" maxlength="500" placeholder="Необязательно. Например: возьму плед или хочу на закат"></textarea>
+      </div>
       <div class="nav">
         <button class="btn btn-ghost" type="button" data-go="0">Назад</button>
         <button class="btn btn-next" id="to2" type="button" disabled>Дальше</button>
@@ -304,10 +308,6 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
       <div class="part">
         <h3 id="hours-h">Время</h3>
         <div class="hours" id="hours" role="radiogroup" aria-labelledby="hours-h"></div>
-      </div>
-      <div class="part">
-        <h3><label for="note">Добавить своё</label></h3>
-        <textarea id="note" rows="2" maxlength="500" placeholder="Необязательно. Например: возьму плед или хочу на закат"></textarea>
       </div>
       <div class="nav">
         <button class="btn btn-ghost" type="button" data-go="1">Назад</button>
