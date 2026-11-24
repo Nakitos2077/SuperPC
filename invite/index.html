@@ -135,7 +135,7 @@ p { margin: 0; }
 /* photo tiles: the picture fills the card, the caption sits on it */
 .opt { position: relative; overflow: hidden; aspect-ratio: 3 / 4; max-width: 100%; padding: 0; border-width: 3px; justify-content: flex-end !important; gap: 0; }
 .thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
-.thumb-icon { display: grid; place-items: center; padding-bottom: 28%; box-sizing: border-box; background: url("bg.jpg") 50% 50% / cover no-repeat; }
+.thumb-icon { display: grid; place-items: center; padding-bottom: 28%; box-sizing: border-box; background: linear-gradient(160deg, #C7A272, #7A5A38); }
 .opt .thumb-icon svg { width: 56px; height: 56px; color: rgba(255, 255, 255, .9); }
 .opt::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(8, 12, 24, .9), rgba(8, 12, 24, .55) 45%, rgba(8, 12, 24, 0) 78%); pointer-events: none; }
 .cap { position: relative; z-index: 1; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 10px 14px; text-align: center; }
