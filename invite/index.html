@@ -308,7 +308,7 @@ p { margin: 0; }
       <div class="progress"><div class="bar"><i style="width:100%"></i></div><span>шаг 3 из 3</span></div>
       <div class="part">
         <h2>Ура, договорились!</h2>
-        <p class="status" id="status" data-state="sending" aria-live="polite"><span class="dotx"></span><span id="status-text">Отправляю ответ…</span></p>
+        <p class="status" id="status" data-state="sending" aria-live="polite" hidden><span class="dotx"></span><span id="status-text">Отправляю ответ…</span></p>
         <button class="btn btn-ghost retry" id="retry" type="button" hidden>Отправить ещё раз</button>
       </div>
       <div class="ticket">
@@ -500,34 +500,39 @@ p { margin: 0; }
   }
 
   // ---------- автоотправка на почту ----------
+  // Экран «Ура» показывается сразу, письмо уходит в фоне.
+  // Простой form-запрос без предварительной проверки CORS: быстрее и доходит, даже если вкладку закрыли.
   let lastSent = null, sending = 0;
   function setStatus(st, text) {
+    $("status").hidden = st === "sending";
     $("status").dataset.state = st;
     $("status-text").textContent = text;
     $("retry").hidden = st !== "failed";
   }
   async function postOnce() {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 12000);
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const body = new URLSearchParams({
+      _subject: "Ответ на приглашение: " + state.place.title + ", " + dayLong() + ", " + state.hour + ":00",
+      _template: "table",
+      _captcha: "false",
+      "Ответ": "Да",
+      "Куда": state.place.title,
+      "День": dayLong(),
+      "Время": state.hour + ":00"
+    });
     try {
       const res = await fetch("https://formsubmit.co/ajax/" + CONFIG.email, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({
-          _subject: "Ответ на приглашение: " + state.place.title + ", " + dayLong() + ", " + state.hour + ":00",
-          _template: "table",
-          _captcha: "false",
-          "Ответ": "Да",
-          "Куда": state.place.title,
-          "День": dayLong(),
-          "Время": state.hour + ":00"
-        }),
+        headers: { "Accept": "application/json" },
+        body,
+        keepalive: true,
         signal: ctrl.signal
       });
       const data = await res.json().catch(() => ({}));
-      return res.ok && String(data.success) === "true";
+      return { reached: true, ok: res.ok && String(data.success) === "true" };
     } catch (e) {
-      return false;
+      return { reached: false, ok: false };
     } finally {
       clearTimeout(timer);
     }
@@ -536,19 +541,20 @@ p { margin: 0; }
     const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour;
     if (key === lastSent) { setStatus("sent", "Ответ отправлен. До встречи!"); return; }
     const my = ++sending;
-    setStatus("sending", "Отправляю ответ…");
-    // несколько попыток, если интернет моргнул
-    for (const wait of [0, 2000, 5000]) {
+    setStatus("sending", "");
+    // повторяем только если не было связи; если сервис ответил отказом, повтор не поможет
+    for (const wait of [0, 1500, 4000]) {
       if (wait) await new Promise((r) => setTimeout(r, wait));
       if (my !== sending) return;
-      if (await postOnce()) {
-        if (my !== sending) return;
+      const r = await postOnce();
+      if (my !== sending) return;
+      if (r.ok) {
         lastSent = key;
         setStatus("sent", "Ответ отправлен. До встречи!");
         return;
       }
+      if (r.reached) break;
     }
-    if (my !== sending) return;
     setStatus("failed", "Не получилось отправить ответ. Проверь интернет и нажми кнопку ниже.");
   }
   $("retry").addEventListener("click", sendAnswer);
