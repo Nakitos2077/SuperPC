@@ -216,6 +216,27 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 }
 .toast { min-height: 1.4em; font-size: .9rem; color: var(--accent); font-weight: 700; text-align: center; }
 .nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.map-search { display: flex; gap: 8px; }
+.map-search input {
+  flex: 1; min-width: 0; box-sizing: border-box; border-radius: 14px; border: 2px solid var(--line);
+  background: var(--chip); color: var(--ink); padding: 11px 14px; font: 500 1rem/1.2 var(--body);
+}
+.map-search input:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.btn-find { background: var(--chip); color: var(--ink); padding: 12px 18px; border-radius: 14px; }
+.map {
+  position: relative; z-index: 0; height: 300px; max-width: 100%; border-radius: 18px; overflow: hidden;
+  border: 2px solid var(--line); background: var(--chip);
+}
+.map-msg { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; color: var(--muted); }
+.map-picked { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 600; }
+.map-picked span { min-width: 0; overflow-wrap: anywhere; }
+.map-picked .btn-ghost { flex: none; padding: 8px 10px; font-size: .9rem; }
+.pin {
+  width: 26px; height: 26px; box-sizing: border-box; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  background: var(--accent); border: 3px solid #FFFFFF; box-shadow: 0 4px 10px rgba(0, 0, 0, .35);
+}
+.pin-wrap { background: none; border: 0; }
+.leaflet-container { font: 500 .8rem/1.3 var(--body); }
 .nav .btn-next { width: auto; flex: 1; }
 
 .photo-bg {
@@ -281,7 +302,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 
     <!-- Шаг 1: место -->
     <section class="step" id="s1" hidden>
-      <div class="progress"><div class="bar"><i style="width:33%"></i></div><span>шаг 1 из 3</span></div>
+      <div class="progress"><div class="bar"><i style="width:25%"></i></div><span>шаг 1 из 4</span></div>
       <div class="part">
         <h2>Куда пойдём?</h2>
         <p class="lead">Выбери, что тебе больше нравится.</p>
@@ -299,7 +320,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 
     <!-- Шаг 2: день и время -->
     <section class="step" id="s2" hidden>
-      <div class="progress"><div class="bar"><i style="width:66%"></i></div><span>шаг 2 из 3</span></div>
+      <div class="progress"><div class="bar"><i style="width:50%"></i></div><span>шаг 2 из 4</span></div>
       <h2>Когда тебе удобно?</h2>
       <div class="part">
         <h3 id="days-h">День</h3>
@@ -311,13 +332,36 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
       </div>
       <div class="nav">
         <button class="btn btn-ghost" type="button" data-go="1">Назад</button>
-        <button class="btn btn-next" id="to3" type="button" disabled>Готово</button>
+        <button class="btn btn-next" id="to3" type="button" disabled>Дальше</button>
       </div>
     </section>
 
     <!-- Шаг 3: итог -->
+    <!-- Шаг 3: место встречи на карте (можно пропустить) -->
     <section class="step" id="s3" hidden>
-      <div class="progress"><div class="bar"><i style="width:100%"></i></div><span>шаг 3 из 3</span></div>
+      <div class="progress"><div class="bar"><i style="width:75%"></i></div><span>шаг 3 из 4</span></div>
+      <div class="part">
+        <h2>Где встретимся?</h2>
+        <p class="lead">Нажми на карту, чтобы поставить точку. Этот шаг можно пропустить.</p>
+      </div>
+      <form class="map-search" id="map-search">
+        <input id="map-q" type="search" placeholder="Поиск адреса" autocomplete="off" aria-label="Поиск адреса">
+        <button class="btn btn-find" type="submit">Найти</button>
+      </form>
+      <div class="map" id="map"><p class="map-msg" id="map-msg">Загружаю карту…</p></div>
+      <div class="map-picked" id="map-picked" hidden>
+        <span id="map-label"></span>
+        <button class="btn btn-ghost" id="map-clear" type="button">Убрать точку</button>
+      </div>
+      <div class="nav">
+        <button class="btn btn-ghost" type="button" data-go="2">Назад</button>
+        <button class="btn btn-next" id="to4" type="button">Пропустить</button>
+      </div>
+    </section>
+
+    <!-- Шаг 4: итог -->
+    <section class="step" id="s4" hidden>
+      <div class="progress"><div class="bar"><i style="width:100%"></i></div><span>шаг 4 из 4</span></div>
       <div class="part">
         <h2>Ура, договорились!</h2>
         <p class="status" id="status" data-state="sending" aria-live="polite" hidden><span class="dotx"></span><span id="status-text">Отправляю ответ…</span></p>
@@ -328,6 +372,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
           <div class="row"><dt>Куда</dt><dd id="r-place"></dd></div>
           <div class="row"><dt>День</dt><dd id="r-day"></dd></div>
           <div class="row"><dt>Время</dt><dd id="r-time"></dd></div>
+          <div class="row" id="r-meet-row" hidden><dt>Встреча</dt><dd id="r-meet"></dd></div>
           <div class="row" id="r-note-row" hidden><dt>Ещё</dt><dd id="r-note"></dd></div>
         </dl>
       </div>
@@ -349,7 +394,10 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     title: "Погнали гулять?",
     firstHour: 10,
     lastHour: 21,
-    daysAhead: 14
+    daysAhead: 14,
+    // Карта: где она откроется сначала (широта, долгота) и насколько крупно
+    mapCenter: [50.4501, 30.5234],
+    mapZoom: 12
   };
 
   const ICONS = {
@@ -368,17 +416,18 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
   const NOPE_NOTES = ["", "Кнопка «Нет» стесняется.", "Она снова убежала.", "Кажется, вариант только один.", "«Да» уже ждёт тебя."];
 
   const $ = (id) => document.getElementById(id);
-  const state = { step: 0, place: null, day: null, hour: null, nope: 0 };
+  const state = { step: 0, place: null, day: null, hour: null, meet: null, nope: 0 };
 
   $("invite-title").textContent = CONFIG.title;
 
   // ---------- шаги ----------
   function go(n) {
     state.step = n;
-    for (let i = 0; i < 4; i++) $("s" + i).hidden = i !== n;
+    for (let i = 0; i < 5; i++) $("s" + i).hidden = i !== n;
     if (n !== 0) resetNo();
     if (n === 2) renderDays();
-    if (n === 3) renderResult();
+    if (n === 3) openMap();
+    if (n === 4) renderResult();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(+b.dataset.go)));
@@ -502,7 +551,98 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     });
     $("to3").disabled = !(state.day && state.hour != null);
   }
-  $("to3").addEventListener("click", () => { burst(); go(3); });
+  $("to3").addEventListener("click", () => go(3));
+
+  // ---------- место встречи на карте ----------
+  let map = null, marker = null, leafletP = null, reverseTimer = null;
+  function loadLeaflet() {
+    if (window.L) return Promise.resolve();
+    if (leafletP) return leafletP;
+    leafletP = new Promise((resolve, reject) => {
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+      document.head.appendChild(css);
+      const js = document.createElement("script");
+      js.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+      js.onload = resolve;
+      js.onerror = () => { leafletP = null; reject(); };
+      document.head.appendChild(js);
+    });
+    return leafletP;
+  }
+  function updateMeetUi() {
+    $("map-picked").hidden = !state.meet;
+    $("map-label").textContent = state.meet ? state.meet.label : "";
+    $("to4").textContent = state.meet ? "Готово" : "Пропустить";
+  }
+  function setMeet(lat, lng, label) {
+    state.meet = { lat, lng, label: label || "Точка на карте" };
+    const icon = L.divIcon({ className: "pin-wrap", html: '<div class="pin"></div>', iconSize: [26, 26], iconAnchor: [13, 32] });
+    if (marker) marker.setLatLng([lat, lng]); else marker = L.marker([lat, lng], { icon }).addTo(map);
+    updateMeetUi();
+    if (!label) {
+      clearTimeout(reverseTimer);
+      reverseTimer = setTimeout(() => reverseLookup(lat, lng), 400);
+    }
+  }
+  function shortAddress(d) {
+    const a = d.address || {};
+    const street = [a.road || a.pedestrian || a.square, a.house_number].filter(Boolean).join(", ");
+    return d.name || street || (d.display_name || "").split(",").slice(0, 2).join(",").trim();
+  }
+  async function reverseLookup(lat, lng) {
+    try {
+      const url = "https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=ru&zoom=18&lat=" + lat + "&lon=" + lng;
+      const d = await (await fetch(url)).json();
+      const label = shortAddress(d);
+      if (label && state.meet && state.meet.lat === lat && state.meet.lng === lng) {
+        state.meet.label = label;
+        updateMeetUi();
+      }
+    } catch (e) { /* адрес не нашёлся: остаётся «Точка на карте» */ }
+  }
+  async function openMap() {
+    updateMeetUi();
+    try {
+      await loadLeaflet();
+    } catch (e) {
+      $("map-msg").textContent = "Карта не загрузилась. Этот шаг можно пропустить.";
+      return;
+    }
+    if (!map) {
+      $("map-msg").remove();
+      map = L.map("map", { zoomControl: true }).setView(CONFIG.mapCenter, CONFIG.mapZoom);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      }).addTo(map);
+      map.on("click", (e) => setMeet(+e.latlng.lat.toFixed(6), +e.latlng.lng.toFixed(6)));
+    }
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+  $("map-search").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const q = $("map-q").value.trim();
+    if (!q || !map) return;
+    try {
+      const b = map.getBounds();
+      const url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=ru&q=" + encodeURIComponent(q) +
+        "&viewbox=" + [b.getWest(), b.getNorth(), b.getEast(), b.getSouth()].join(",");
+      const res = await (await fetch(url)).json();
+      if (!res.length) { $("map-q").setCustomValidity("Ничего не нашлось"); $("map-q").reportValidity(); return; }
+      const r = res[0], lat = +(+r.lat).toFixed(6), lng = +(+r.lon).toFixed(6);
+      map.setView([lat, lng], 17);
+      setMeet(lat, lng, shortAddress(r));
+    } catch (err) { /* поиск недоступен: можно поставить точку вручную */ }
+  });
+  $("map-q").addEventListener("input", () => $("map-q").setCustomValidity(""));
+  $("map-clear").addEventListener("click", () => {
+    state.meet = null;
+    if (marker) { marker.remove(); marker = null; }
+    updateMeetUi();
+  });
+  $("to4").addEventListener("click", () => { burst(); go(4); });
 
   // ---------- итог ----------
   function dayLong() {
@@ -516,6 +656,8 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     const note = $("note").value.trim();
     $("r-note").textContent = note;
     $("r-note-row").hidden = !note;
+    $("r-meet").textContent = state.meet ? state.meet.label : "";
+    $("r-meet-row").hidden = !state.meet;
     sendAnswer();
   }
 
@@ -530,7 +672,9 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     $("retry").hidden = st !== "failed";
   }
   function answerFields() {
-    return { place: state.place.title, day: dayLong(), time: state.hour + ":00", note: $("note").value.trim() };
+    return { place: state.place.title, day: dayLong(), time: state.hour + ":00", note: $("note").value.trim(),
+      meet: state.meet ? state.meet.label : "",
+      meetLink: state.meet ? "https://maps.google.com/?q=" + state.meet.lat + "," + state.meet.lng : "" };
   }
   async function post(url, body) {
     const ctrl = new AbortController();
@@ -550,6 +694,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     if (!token || !CONFIG.tgChatId) return null;
     const f = answerFields();
     let text = "Ответ на приглашение: да!\nКуда: " + f.place + "\nДень: " + f.day + "\nВремя: " + f.time;
+    if (f.meet) text += "\nМесто встречи: " + f.meet + "\n" + f.meetLink;
     if (f.note) text += "\nДополнение: " + f.note;
     const r = await post("https://api.telegram.org/bot" + token + "/sendMessage",
       new URLSearchParams({ chat_id: CONFIG.tgChatId, text }));
@@ -562,7 +707,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
       _subject: "Ответ на приглашение: " + f.place + ", " + f.day + ", " + f.time,
       _template: "table",
       _captcha: "false",
-      "Ответ": "Да", "Куда": f.place, "День": f.day, "Время": f.time, "Дополнение": f.note || "—"
+      "Ответ": "Да", "Куда": f.place, "День": f.day, "Время": f.time, "Место встречи": f.meet ? f.meet + " " + f.meetLink : "—", "Дополнение": f.note || "—"
     }));
     return { reached: r.reached, ok: r.ok && String(r.data.success) === "true" };
   }
@@ -572,7 +717,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     return { ok: results.some((r) => r.ok), reached: results.some((r) => r.reached) };
   }
   async function sendAnswer() {
-    const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour + "|" + $("note").value.trim();
+    const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour + "|" + $("note").value.trim() + "|" + (state.meet ? state.meet.lat + "," + state.meet.lng + state.meet.label : "");
     if (key === lastSent) { setStatus("sent", "Ответ отправлен. До встречи!"); return; }
     const my = ++sending;
     setStatus("sending", "");
