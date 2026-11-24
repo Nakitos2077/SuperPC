@@ -121,14 +121,14 @@ p { margin: 0; }
 /* places */
 .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .opt {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; text-align: left;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center;
   background: var(--chip); color: var(--ink); border: 2px solid transparent; border-radius: 20px;
   padding: 16px 14px; cursor: pointer; font: inherit; min-width: 0;
   transition: border-color .2s ease, background-color .2s ease, transform .2s ease;
 }
 .opt:hover { transform: translateY(-2px); }
 .opt svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
-.opt b { font-family: var(--display); font-weight: 500; font-size: 1rem; }
+.opt b { font-family: var(--display); font-weight: 500; font-size: clamp(.85rem, 3.6vw, 1rem); max-width: 100%; overflow-wrap: anywhere; }
 .opt small { color: var(--muted); font-size: .84rem; line-height: 1.35; }
 .opt[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .opt[aria-checked="true"] svg { color: var(--accent); }
@@ -328,7 +328,7 @@ p { margin: 0; }
     { id: "park", title: "Прогулка в парке", short: "Парк", desc: "Твой любимый чистый воздух и природа" },
     { id: "monastery", title: "Монастыри", short: "Монастыри", desc: "" },
     { id: "coffee", title: "Кофе", short: "Кофе", desc: "Кофе, когда нечасто, не вредно)" },
-    { id: "surprise", title: "Неизведанное", short: "?", desc: "Неизведанное" }
+    { id: "surprise", title: "Неизведанное", short: "Неизведанное", desc: "" }
   ];
   const NOPE = ["Нет", "Точно?", "Подумай ещё", "Ну пожалуйста", "Не-а", "Кнопка устала", "Только «да»"];
   const NOPE_NOTES = ["", "Кнопка «Нет» стесняется.", "Она снова убежала.", "Кажется, вариант только один.", "«Да» уже ждёт тебя."];
