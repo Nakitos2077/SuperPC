@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>Пойдём гулять?</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Unbounded:wght@500;700&display=swap">
+<style>
+/* Layout: one invitation card in the middle of the screen, four steps inside: question → place → day & hour → answer to send */
+:root {
+  --bg: #EAF1FB;
+  --dot: #D3DEF0;
+  --surface: #FFFFFF;
+  --ink: #18233F;
+  --muted: #5B6782;
+  --line: #D8E0EE;
+  --chip: #F2F5FB;
+  --accent: #EC3F7A;
+  --accent-soft: #FDE3EC;
+  --accent-ink: #FFFFFF;
+  --sun: #FFC53D;
+  --shadow: rgba(24, 35, 63, .22);
+  --display: "Unbounded", "Arial Rounded MT Bold", system-ui, sans-serif;
+  --body: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1528; --dot: #1B2440; --surface: #18213A; --ink: #EEF2FF; --muted: #A3AECB;
+    --line: #2B3658; --chip: #212C4A; --accent: #FF5E93; --accent-soft: #3A2241; --accent-ink: #FFFFFF;
+    --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1528; --dot: #1B2440; --surface: #18213A; --ink: #EEF2FF; --muted: #A3AECB;
+  --line: #2B3658; --chip: #212C4A; --accent: #FF5E93; --accent-soft: #3A2241; --accent-ink: #FFFFFF;
+  --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
+}
+
+html, body { height: 100%; }
+body {
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--dot) 1.5px, transparent 1.6px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.5;
+}
+.wrap {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding-block: 28px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+.card {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  box-sizing: border-box;
+  background: var(--surface);
+  border-radius: 28px;
+  padding: 28px clamp(20px, 5vw, 36px) 30px;
+  box-shadow: 0 24px 60px -24px var(--shadow);
+  overflow: hidden;
+}
+.step { display: flex; flex-direction: column; gap: 20px; animation: rise .45s ease both; }
+@keyframes rise { from { transform: translateY(10px); opacity: .4; } to { transform: none; opacity: 1; } }
+
+h1, h2 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h1 { font-size: clamp(1.7rem, 6vw, 2.25rem); line-height: 1.15; }
+h2 { font-size: clamp(1.25rem, 4.6vw, 1.55rem); line-height: 1.2; }
+h3 { font-family: var(--body); font-size: .78rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0; font-weight: 700; }
+p { margin: 0; }
+.lead { color: var(--muted); font-size: 1.02rem; }
+.center { text-align: center; align-items: center; }
+
+.hero-art { width: 190px; max-width: 70%; height: auto; }
+.cup-a { fill: var(--sun); }
+.cup-b { fill: var(--accent); }
+.cup-line { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.heart { fill: var(--accent); transform-origin: 80px 34px; animation: beat 1.6s ease-in-out infinite; }
+@keyframes beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.14); } 30% { transform: scale(1); } }
+
+/* buttons */
+.btn {
+  font: 700 1rem/1 var(--body);
+  border: 0; border-radius: 999px; padding: 16px 28px; cursor: pointer;
+  transition: transform .25s ease, background-color .2s ease, opacity .2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:focus-visible, .opt:focus-visible, .chip:focus-visible, .hour:focus-visible, textarea:focus-visible, .share a:focus-visible {
+  outline: 3px solid var(--sun); outline-offset: 3px;
+}
+.btn-yes { background: var(--accent); color: var(--accent-ink); min-width: 120px; }
+.btn-no { background: var(--chip); color: var(--ink); white-space: nowrap; }
+.btn-next { background: var(--ink); color: var(--surface); width: 100%; }
+.btn-next:disabled { opacity: .35; cursor: not-allowed; }
+.btn-ghost { background: transparent; color: var(--muted); padding: 10px 12px; font-weight: 600; }
+.answer { display: flex; gap: 14px; justify-content: center; align-items: center; min-height: 96px; flex-wrap: wrap; }
+.btn-no.loose { position: absolute; z-index: 5; transition: left .28s cubic-bezier(.3,1.4,.5,1), top .28s cubic-bezier(.3,1.4,.5,1); }
+.nope-note { min-height: 1.5em; color: var(--muted); font-size: .92rem; }
+
+/* progress */
+.progress { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bar { flex: 1; height: 6px; background: var(--chip); border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .35s ease; }
+.progress span { font-size: .82rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* places */
+.opts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.opt {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; text-align: left;
+  background: var(--chip); color: var(--ink); border: 2px solid transparent; border-radius: 20px;
+  padding: 16px 14px; cursor: pointer; font: inherit; min-width: 0;
+  transition: border-color .2s ease, background-color .2s ease, transform .2s ease;
+}
+.opt:hover { transform: translateY(-2px); }
+.opt svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
+.opt b { font-family: var(--display); font-weight: 500; font-size: 1rem; }
+.opt small { color: var(--muted); font-size: .84rem; line-height: 1.35; }
+.opt[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.opt[aria-checked="true"] svg { color: var(--accent); }
+
+/* days & hours */
+.days-scroll { overflow-x: auto; margin-inline: -4px; padding: 4px; scrollbar-width: thin; }
+.days { display: flex; gap: 8px; width: max-content; }
+.chip {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; width: 62px; padding: 10px 0;
+  background: var(--chip); color: var(--ink); border: 2px solid transparent; border-radius: 16px; cursor: pointer; font: inherit;
+  transition: border-color .2s ease, background-color .2s ease;
+}
+.chip .wd { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.chip .dn { font-family: var(--display); font-size: 1.25rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.chip .mn { font-size: .72rem; color: var(--muted); }
+.chip.weekend .wd { color: var(--accent); }
+.chip[aria-checked="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip[aria-checked="true"] .wd, .chip[aria-checked="true"] .mn { color: var(--accent-ink); }
+.hours { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.hour {
+  padding: 11px 0; border-radius: 12px; border: 2px solid transparent; background: var(--chip); color: var(--ink);
+  font: 600 .98rem/1 var(--body); font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.hour:disabled { opacity: .3; cursor: not-allowed; text-decoration: line-through; }
+.hour[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
+.part { display: flex; flex-direction: column; gap: 10px; }
+
+/* ticket */
+.ticket {
+  position: relative; border: 2px dashed var(--line); border-radius: 20px; padding: 18px 20px;
+  display: grid; gap: 12px; background: var(--chip);
+}
+.row { display: grid; grid-template-columns: 76px 1fr; gap: 12px; align-items: baseline; }
+.row dt { font-size: .76rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+.row dd { margin: 0; font-weight: 700; font-size: 1.05rem; min-width: 0; }
+.ticket dl { margin: 0; display: grid; gap: 10px; }
+.stamp {
+  position: absolute; top: -14px; right: 16px; transform: rotate(6deg);
+  background: var(--sun); color: #2A1E00; font: 700 .72rem/1 var(--display); letter-spacing: .06em;
+  padding: 8px 10px; border-radius: 8px; text-transform: uppercase;
+}
+label.lbl { font-weight: 700; font-size: .95rem; }
+textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; border-radius: 14px;
+  border: 2px solid var(--line); background: var(--surface); color: var(--ink); padding: 12px 14px; font: inherit;
+}
+.share { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.share a, .share button {
+  display: flex; align-items: center; justify-content: center; text-align: center; gap: 6px;
+  padding: 13px 8px; border-radius: 14px; font: 700 .92rem/1.1 var(--body); text-decoration: none; cursor: pointer; border: 0;
+}
+.share .copy { background: var(--ink); color: var(--surface); }
+.share .tg { background: #2AABEE; color: #FFFFFF; }
+.share .wa { background: #1FA855; color: #FFFFFF; }
+.msg-preview {
+  white-space: pre-wrap; font-size: .9rem; color: var(--muted); background: var(--chip); border-radius: 14px; padding: 12px 14px;
+  user-select: all; overflow-wrap: anywhere;
+}
+.toast { min-height: 1.4em; font-size: .9rem; color: var(--accent); font-weight: 700; text-align: center; }
+.nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.nav .btn-next { width: auto; flex: 1; }
+
+#confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 20; }
+
+@media (max-width: 380px) {
+  .opts { grid-template-columns: 1fr; }
+  .share { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="confetti" aria-hidden="true"></canvas>
+<main class="wrap">
+  <div class="card" id="card">
+
+    <!-- Шаг 0: приглашение -->
+    <section class="step center" id="s0">
+      <svg class="hero-art" viewBox="0 0 160 110" aria-hidden="true">
+        <path class="heart" d="M80 44c-1-1-15-9-17-17-2-8 9-14 17-5 8-9 19-3 17 5-2 8-16 16-17 17z"/>
+        <g transform="rotate(-14 52 78)">
+          <path class="cup-a" d="M30 56h40v20a16 16 0 0 1-16 16h-8a16 16 0 0 1-16-16z"/>
+          <path class="cup-line" d="M30 56h40v20a16 16 0 0 1-16 16h-8a16 16 0 0 1-16-16zM30 64h-4a7 7 0 0 0 0 14h5"/>
+        </g>
+        <g transform="rotate(14 108 78)">
+          <path class="cup-b" d="M90 56h40v20a16 16 0 0 1-16 16h-8a16 16 0 0 1-16-16z"/>
+          <path class="cup-line" d="M90 56h40v20a16 16 0 0 1-16 16h-8a16 16 0 0 1-16-16zM130 64h4a7 7 0 0 1 0 14h-5"/>
+        </g>
+      </svg>
+      <h1 id="invite-title">Пойдёшь со мной погулять?</h1>
+      <p class="lead">Я приглашаю тебя провести время вместе. Если «да», выберем куда и когда.</p>
+      <div class="answer" id="answer">
+        <button class="btn btn-yes" id="yes" type="button">Да!</button>
+        <button class="btn btn-no" id="no" type="button">Нет</button>
+      </div>
+      <p class="nope-note" id="nope-note" aria-live="polite"></p>
+    </section>
+
+    <!-- Шаг 1: место -->
+    <section class="step" id="s1" hidden>
+      <div class="progress"><div class="bar"><i style="width:33%"></i></div><span>шаг 1 из 3</span></div>
+      <div class="part">
+        <h2>Куда пойдём?</h2>
+        <p class="lead">Выбери, что тебе больше нравится.</p>
+      </div>
+      <div class="opts" id="opts" role="radiogroup" aria-label="Место"></div>
+      <div class="nav">
+        <button class="btn btn-ghost" type="button" data-go="0">Назад</button>
+        <button class="btn btn-next" id="to2" type="button" disabled>Дальше</button>
+      </div>
+    </section>
+
+    <!-- Шаг 2: день и время -->
+    <section class="step" id="s2" hidden>
+      <div class="progress"><div class="bar"><i style="width:66%"></i></div><span>шаг 2 из 3</span></div>
+      <h2>Когда тебе удобно?</h2>
+      <div class="part">
+        <h3 id="days-h">День</h3>
+        <div class="days-scroll"><div class="days" id="days" role="radiogroup" aria-labelledby="days-h"></div></div>
+      </div>
+      <div class="part">
+        <h3 id="hours-h">Время</h3>
+        <div class="hours" id="hours" role="radiogroup" aria-labelledby="hours-h"></div>
+      </div>
+      <div class="nav">
+        <button class="btn btn-ghost" type="button" data-go="1">Назад</button>
+        <button class="btn btn-next" id="to3" type="button" disabled>Готово</button>
+      </div>
+    </section>
+
+    <!-- Шаг 3: итог -->
+    <section class="step" id="s3" hidden>
+      <div class="progress"><div class="bar"><i style="width:100%"></i></div><span>шаг 3 из 3</span></div>
+      <div class="part">
+        <h2>Ура, договорились!</h2>
+        <p class="lead">Отправь ответ тому, кто тебя пригласил.</p>
+      </div>
+      <div class="ticket">
+        <span class="stamp">свидание</span>
+        <dl>
+          <div class="row"><dt>Куда</dt><dd id="r-place"></dd></div>
+          <div class="row"><dt>День</dt><dd id="r-day"></dd></div>
+          <div class="row"><dt>Время</dt><dd id="r-time"></dd></div>
+        </dl>
+      </div>
+      <div class="part">
+        <label class="lbl" for="note">Хочешь что-то добавить?</label>
+        <textarea id="note" placeholder="Например: возьму с собой плед"></textarea>
+      </div>
+      <p class="msg-preview" id="msg"></p>
+      <div class="share">
+        <button class="copy" id="copy" type="button">Скопировать</button>
+        <a class="tg" id="tg" href="#" target="_blank" rel="noopener">Telegram</a>
+        <a class="wa" id="wa" href="#" target="_blank" rel="noopener">WhatsApp</a>
+      </div>
+      <p class="toast" id="toast" aria-live="polite"></p>
+      <button class="btn btn-ghost" type="button" data-go="1">Изменить выбор</button>
+    </section>
+
+  </div>
+</main>
+
+<script>
+(function () {
+  // Поменяй под себя: заголовок приглашения и часы, из которых можно выбирать.
+  const CONFIG = {
+    title: "Пойдёшь со мной погулять?",
+    firstHour: 10,
+    lastHour: 21,
+    daysAhead: 14
+  };
+
+  const ICONS = {
+    park: '<svg viewBox="0 0 48 48"><path d="M24 30c-8 0-12-5-12-10 0-4 3-6 5-7 0-5 4-8 7-8s7 3 7 8c2 1 5 3 5 7 0 5-4 10-12 10z"/><path d="M24 30v12M17 42h14M24 34l-5-4M24 32l4-3"/></svg>',
+    cafe: '<svg viewBox="0 0 48 48"><circle cx="25" cy="26" r="11"/><circle cx="25" cy="26" r="5.5"/><path d="M6 10v7a3 3 0 0 0 6 0v-7M9 10v31M42 10c-3 2-4 8-4 13h4v18"/></svg>',
+    coffee: '<svg viewBox="0 0 48 48"><path d="M9 19h25v11a10 10 0 0 1-10 10h-5A10 10 0 0 1 9 30z"/><path d="M34 22h3a5 5 0 0 1 0 10h-3M16 7c-2 2 2 4 0 7M23 5c-2 2 2 4 0 7M30 7c-2 2 2 4 0 7"/></svg>',
+    surprise: '<svg viewBox="0 0 48 48"><path d="M9 22h30v18H9zM6 15h36v7H6zM24 15v25"/><path d="M24 15c-3-6-11-6-9-1 1 2 5 1 9 1zM24 15c3-6 11-6 9-1-1 2-5 1-9 1z"/></svg>'
+  };
+  const PLACES = [
+    { id: "park", title: "Прогулка в парке", short: "Парк", desc: "Аллеи, свежий воздух и разговоры обо всём" },
+    { id: "cafe", title: "Ужин в кафе", short: "Кафе", desc: "Вкусно поесть и никуда не спешить" },
+    { id: "coffee", title: "Кофе вдвоём", short: "Кофе", desc: "Взять по стаканчику и пройтись по городу" },
+    { id: "surprise", title: "Сюрприз", short: "Сюрприз", desc: "Доверься мне, я всё придумаю" }
+  ];
+  const NOPE = ["Нет", "Точно?", "Подумай ещё", "Ну пожалуйста", "Не-а", "Кнопка устала", "Только «да»"];
+  const NOPE_NOTES = ["", "Кнопка «Нет» стесняется.", "Она снова убежала.", "Кажется, вариант только один.", "«Да» уже ждёт тебя."];
+
+  const $ = (id) => document.getElementById(id);
+  const state = { step: 0, place: null, day: null, hour: null, nope: 0 };
+
+  $("invite-title").textContent = CONFIG.title;
+
+  // ---------- шаги ----------
+  function go(n) {
+    state.step = n;
+    for (let i = 0; i < 4; i++) $("s" + i).hidden = i !== n;
+    if (n !== 0) resetNo();
+    if (n === 2) renderDays();
+    if (n === 3) renderResult();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(+b.dataset.go)));
+
+  // ---------- убегающая «Нет» ----------
+  const card = $("card"), yes = $("yes"), no = $("no");
+  let lastDodge = 0;
+  function dodge(e) {
+    if (e) e.preventDefault();
+    if (Date.now() - lastDodge < 350) return;
+    lastDodge = Date.now();
+    state.nope++;
+    no.textContent = NOPE[Math.min(state.nope, NOPE.length - 1)];
+    $("nope-note").textContent = NOPE_NOTES[Math.min(state.nope, NOPE_NOTES.length - 1)];
+    yes.style.transform = "scale(" + Math.min(1 + state.nope * 0.09, 1.7) + ")";
+    const c = card.getBoundingClientRect();
+    if (!no.classList.contains("loose")) {
+      const r = no.getBoundingClientRect();
+      no.style.left = (r.left - c.left) + "px";
+      no.style.top = (r.top - c.top) + "px";
+      no.classList.add("loose");
+      void no.offsetWidth;
+    }
+    const w = no.offsetWidth, h = no.offsetHeight, pad = 12;
+    const y = yes.getBoundingClientRect();
+    let x, t, tries = 0;
+    do {
+      x = pad + Math.random() * Math.max(0, c.width - w - pad * 2);
+      t = pad + Math.random() * Math.max(0, c.height - h - pad * 2);
+      tries++;
+    } while (tries < 30 && overlaps(x + c.left, t + c.top, w, h, y, 16));
+    no.style.left = x + "px";
+    no.style.top = t + "px";
+  }
+  function overlaps(x, y, w, h, r, m) {
+    return x < r.right + m && x + w > r.left - m && y < r.bottom + m && y + h > r.top - m;
+  }
+  function resetNo() {
+    no.classList.remove("loose");
+    no.style.left = no.style.top = "";
+  }
+  no.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") dodge(); });
+  no.addEventListener("pointerdown", dodge);
+  no.addEventListener("click", dodge);
+  yes.addEventListener("click", () => { burst(); go(1); });
+
+  // ---------- место ----------
+  const opts = $("opts");
+  PLACES.forEach((p) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "opt"; b.id = "opt-" + p.id;
+    b.setAttribute("role", "radio"); b.setAttribute("aria-checked", "false");
+    b.innerHTML = ICONS[p.id] + "<b>" + p.short + "</b><small>" + p.desc + "</small>";
+    b.addEventListener("click", () => {
+      state.place = p;
+      opts.querySelectorAll(".opt").forEach((o) => o.setAttribute("aria-checked", String(o === b)));
+      $("to2").disabled = false;
+    });
+    opts.appendChild(b);
+  });
+  $("to2").addEventListener("click", () => go(2));
+
+  // ---------- день и время ----------
+  const sameDay = (a, b) => a.toDateString() === b.toDateString();
+  function availableHours(day) {
+    const now = new Date(), list = [];
+    for (let h = CONFIG.firstHour; h <= CONFIG.lastHour; h++) {
+      list.push({ h, ok: !sameDay(day, now) || h > now.getHours() });
+    }
+    return list;
+  }
+  function renderDays() {
+    const box = $("days");
+    if (box.childElementCount) return;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let added = 0;
+    for (let i = 0; added < CONFIG.daysAhead && i < CONFIG.daysAhead + 1; i++) {
+      const d = new Date(today); d.setDate(today.getDate() + i);
+      if (!availableHours(d).some((x) => x.ok)) continue;
+      added++;
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.id = "day-" + i;
+      b.setAttribute("role", "radio"); b.setAttribute("aria-checked", "false");
+      if (d.getDay() === 0 || d.getDay() === 6) b.classList.add("weekend");
+      const wd = i === 0 ? "сегодня" : i === 1 ? "завтра" : d.toLocaleDateString("ru-RU", { weekday: "short" });
+      const mn = d.toLocaleDateString("ru-RU", { month: "short" }).replace(".", "");
+      b.innerHTML = '<span class="wd">' + wd + '</span><span class="dn">' + d.getDate() + '</span><span class="mn">' + mn + "</span>";
+      b.setAttribute("aria-label", d.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" }));
+      b.addEventListener("click", () => {
+        state.day = d;
+        box.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-checked", String(c === b)));
+        renderHours();
+      });
+      box.appendChild(b);
+    }
+    renderHours();
+  }
+  function renderHours() {
+    const box = $("hours");
+    box.innerHTML = "";
+    const day = state.day || new Date();
+    const list = availableHours(day);
+    if (state.hour != null && !list.find((x) => x.h === state.hour && x.ok)) state.hour = null;
+    list.forEach(({ h, ok }) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "hour"; b.id = "hour-" + h;
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", String(state.day && state.hour === h));
+      b.textContent = h + ":00";
+      b.disabled = !state.day || !ok;
+      b.addEventListener("click", () => {
+        state.hour = h;
+        box.querySelectorAll(".hour").forEach((c) => c.setAttribute("aria-checked", String(c === b)));
+        $("to3").disabled = false;
+      });
+      box.appendChild(b);
+    });
+    $("to3").disabled = !(state.day && state.hour != null);
+  }
+  $("to3").addEventListener("click", () => { burst(); go(3); });
+
+  // ---------- итог ----------
+  function dayLong() {
+    const s = state.day.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  function message() {
+    const note = $("note").value.trim();
+    let text = "Да, пойдём гулять!\n" +
+      "Куда: " + state.place.title + "\n" +
+      "Когда: " + dayLong() + ", в " + state.hour + ":00";
+    if (note) text += "\n" + note;
+    return text;
+  }
+  function renderResult() {
+    $("r-place").textContent = state.place.title;
+    $("r-day").textContent = dayLong();
+    $("r-time").textContent = state.hour + ":00";
+    updateMsg();
+  }
+  function updateMsg() {
+    const t = message();
+    $("msg").textContent = t;
+    $("tg").href = "https://t.me/share/url?url=" + encodeURIComponent(" ") + "&text=" + encodeURIComponent(t);
+    $("wa").href = "https://wa.me/?text=" + encodeURIComponent(t);
+  }
+  $("note").addEventListener("input", updateMsg);
+  $("copy").addEventListener("click", () => {
+    const t = message();
+    const done = () => { $("toast").textContent = "Скопировано. Вставь в чат и отправь."; };
+    const fallback = () => {
+      const r = document.createRange(); r.selectNodeContents($("msg"));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      $("toast").textContent = "Текст выделен: нажми «Копировать».";
+    };
+    try {
+      navigator.clipboard.writeText(t).then(done, fallback);
+    } catch (e) { fallback(); }
+  });
+
+  // ---------- конфетти ----------
+  const cv = $("confetti"), ctx = cv.getContext("2d");
+  let parts = [], raf = null;
+  function burst() {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const cs = getComputedStyle(document.documentElement);
+    const colors = ["--accent", "--sun", "--ink"].map((v) => cs.getPropertyValue(v).trim());
+    cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio;
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    for (let i = 0; i < 120; i++) {
+      parts.push({
+        x: innerWidth / 2, y: innerHeight * 0.45,
+        vx: (Math.random() - 0.5) * 14, vy: -Math.random() * 13 - 4,
+        r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
+        w: 6 + Math.random() * 6, h: 4 + Math.random() * 4,
+        c: colors[i % colors.length], life: 0
+      });
+    }
+    if (!raf) raf = requestAnimationFrame(tick);
+  }
+  function tick() {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    parts = parts.filter((p) => p.life < 160 && p.y < innerHeight + 20);
+    parts.forEach((p) => {
+      p.life++; p.vy += 0.32; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r);
+      ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+    });
+    raf = parts.length ? requestAnimationFrame(tick) : null;
+    if (!raf) ctx.clearRect(0, 0, innerWidth, innerHeight);
+  }
+})();
+</script>
+</body>
+</html>
