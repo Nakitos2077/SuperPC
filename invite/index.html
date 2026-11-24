@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
-<title>Пойдём гулять?</title>
+<title>Погнали гулять?</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,6 +23,9 @@
   --accent-soft: #FDE3EC;
   --accent-ink: #FFFFFF;
   --sun: #FFC53D;
+  --blob1: rgba(236, 63, 122, .20);
+  --blob2: rgba(255, 197, 61, .30);
+  --blob3: rgba(90, 140, 255, .18);
   --shadow: rgba(24, 35, 63, .22);
   --display: "Unbounded", "Arial Rounded MT Bold", system-ui, sans-serif;
   --body: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -32,19 +35,27 @@
     --bg: #0F1528; --dot: #1B2440; --surface: #18213A; --ink: #EEF2FF; --muted: #A3AECB;
     --line: #2B3658; --chip: #212C4A; --accent: #FF5E93; --accent-soft: #3A2241; --accent-ink: #FFFFFF;
     --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
+    --blob1: rgba(255, 94, 147, .28); --blob2: rgba(255, 206, 92, .14); --blob3: rgba(90, 140, 255, .22);
   }
 }
 :root[data-theme="dark"] {
   --bg: #0F1528; --dot: #1B2440; --surface: #18213A; --ink: #EEF2FF; --muted: #A3AECB;
   --line: #2B3658; --chip: #212C4A; --accent: #FF5E93; --accent-soft: #3A2241; --accent-ink: #FFFFFF;
   --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
+  --blob1: rgba(255, 94, 147, .28); --blob2: rgba(255, 206, 92, .14); --blob3: rgba(90, 140, 255, .22);
 }
 
 html, body { height: 100%; }
 body {
   background-color: var(--bg);
-  background-image: radial-gradient(var(--dot) 1.5px, transparent 1.6px);
-  background-size: 22px 22px;
+  background-image:
+    radial-gradient(ellipse 70% 45% at 10% 8%, var(--blob1), transparent 70%),
+    radial-gradient(ellipse 65% 40% at 95% 92%, var(--blob2), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 92% 25%, var(--blob3), transparent 70%),
+    radial-gradient(var(--dot) 1.5px, transparent 1.6px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 22px 22px;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  min-height: 100%;
   color: var(--ink);
   font-family: var(--body);
   font-size: 16px;
@@ -85,8 +96,6 @@ p { margin: 0; }
 .cup-a { fill: var(--sun); }
 .cup-b { fill: var(--accent); }
 .cup-line { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.heart { fill: var(--accent); transform-origin: 80px 34px; animation: beat 1.6s ease-in-out infinite; }
-@keyframes beat { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.14); } 30% { transform: scale(1); } }
 
 /* buttons */
 .btn {
@@ -202,8 +211,7 @@ p { margin: 0; }
 
     <!-- Шаг 0: приглашение -->
     <section class="step center" id="s0">
-      <svg class="hero-art" viewBox="0 0 160 110" aria-hidden="true">
-        <path class="heart" d="M80 44c-1-1-15-9-17-17-2-8 9-14 17-5 8-9 19-3 17 5-2 8-16 16-17 17z"/>
+      <svg class="hero-art" viewBox="0 42 160 58" aria-hidden="true">
         <g transform="rotate(-14 52 78)">
           <path class="cup-a" d="M30 56h40v20a16 16 0 0 1-16 16h-8a16 16 0 0 1-16-16z"/>
           <path class="cup-line" d="M30 56h40v20a16 16 0 0 1-16 16h-8a16 16 0 0 1-16-16zM30 64h-4a7 7 0 0 0 0 14h5"/>
@@ -213,7 +221,7 @@ p { margin: 0; }
           <path class="cup-line" d="M90 56h40v20a16 16 0 0 1-16 16h-8a16 16 0 0 1-16-16zM130 64h4a7 7 0 0 1 0 14h-5"/>
         </g>
       </svg>
-      <h1 id="invite-title">Пойдёшь со мной погулять?</h1>
+      <h1 id="invite-title">Погнали гулять?</h1>
       <p class="lead">Я приглашаю тебя провести время вместе. Если «да», выберем куда и когда.</p>
       <div class="answer" id="answer">
         <button class="btn btn-yes" id="yes" type="button">Да!</button>
@@ -288,7 +296,7 @@ p { margin: 0; }
   // Поменяй под себя: почта для ответов, заголовок приглашения и часы, из которых можно выбирать.
   const CONFIG = {
     email: "0977637840.n@gmail.com",
-    title: "Пойдёшь со мной погулять?",
+    title: "Погнали гулять?",
     firstHour: 10,
     lastHour: 21,
     daysAhead: 14
