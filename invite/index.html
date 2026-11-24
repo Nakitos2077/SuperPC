@@ -127,9 +127,16 @@ p { margin: 0; }
   transition: border-color .2s ease, background-color .2s ease, transform .2s ease;
 }
 .opt:hover { transform: translateY(-2px); }
-.thumb { display: block; width: 100%; max-width: 100%; aspect-ratio: 1; border-radius: 14px; object-fit: cover; }
-.thumb-icon { display: grid; place-items: center; background: var(--surface); }
-.opt { justify-content: flex-start !important; }
+/* photo tiles: the picture fills the card, the caption sits on it */
+.opt { position: relative; overflow: hidden; aspect-ratio: 3 / 4; max-width: 100%; padding: 0; border-width: 3px; justify-content: flex-end !important; gap: 0; }
+.thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-icon { display: grid; place-items: center; padding-bottom: 28%; box-sizing: border-box; background: linear-gradient(160deg, #34467A, #1B2443); }
+.opt .thumb-icon svg { width: 56px; height: 56px; color: rgba(255, 255, 255, .9); }
+.opt::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(8, 12, 24, .9), rgba(8, 12, 24, .55) 45%, rgba(8, 12, 24, 0) 78%); pointer-events: none; }
+.cap { position: relative; z-index: 1; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 10px 14px; text-align: center; }
+.opt .cap b { color: #FFFFFF; text-shadow: 0 1px 8px rgba(0, 0, 0, .5); }
+.opt .cap small { color: rgba(255, 255, 255, .88); text-shadow: 0 1px 6px rgba(0, 0, 0, .5); }
+.opt[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .opt svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
 .opt b { font-family: var(--display); font-weight: 500; font-size: clamp(.72rem, 3.2vw, 1rem); max-width: 100%; white-space: nowrap; }
 .opt small { color: var(--muted); font-size: .84rem; line-height: 1.35; }
@@ -207,6 +214,7 @@ p { margin: 0; }
 
 @media (max-width: 380px) {
   .opts { grid-template-columns: 1fr; }
+  .opt { aspect-ratio: 16 / 10; }
   .share { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -403,7 +411,7 @@ p { margin: 0; }
     const thumb = p.img
       ? '<img class="thumb" src="' + p.img + '" alt="">'
       : '<span class="thumb thumb-icon">' + ICONS[p.id] + "</span>";
-    b.innerHTML = thumb + "<b>" + p.short + "</b>" + (p.desc ? "<small>" + p.desc + "</small>" : "");
+    b.innerHTML = thumb + '<span class="cap"><b>' + p.short + "</b>" + (p.desc ? "<small>" + p.desc + "</small>" : "") + "</span>";
     b.setAttribute("aria-label", p.title);
     b.addEventListener("click", () => {
       state.place = p;
