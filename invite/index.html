@@ -95,7 +95,7 @@ p { margin: 0; }
   transition: transform .25s ease, background-color .2s ease, opacity .2s ease;
   -webkit-tap-highlight-color: transparent;
 }
-.btn:focus-visible, .opt:focus-visible, .chip:focus-visible, .hour:focus-visible, textarea:focus-visible, .share a:focus-visible {
+.btn:focus-visible, .opt:focus-visible, .chip:focus-visible, .hour:focus-visible, .share a:focus-visible, .share button:focus-visible {
   outline: 3px solid var(--sun); outline-offset: 3px;
 }
 .btn-yes { background: var(--accent); color: var(--accent-ink); min-width: 120px; }
@@ -160,16 +160,13 @@ p { margin: 0; }
 .row dt { font-size: .76rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
 .row dd { margin: 0; font-weight: 700; font-size: 1.05rem; min-width: 0; }
 .ticket dl { margin: 0; display: grid; gap: 10px; }
-.stamp {
-  position: absolute; top: -14px; right: 16px; transform: rotate(6deg);
-  background: var(--sun); color: #2A1E00; font: 700 .72rem/1 var(--display); letter-spacing: .06em;
-  padding: 8px 10px; border-radius: 8px; text-transform: uppercase;
-}
-label.lbl { font-weight: 700; font-size: .95rem; }
-textarea {
-  width: 100%; box-sizing: border-box; resize: vertical; min-height: 72px; border-radius: 14px;
-  border: 2px solid var(--line); background: var(--surface); color: var(--ink); padding: 12px 14px; font: inherit;
-}
+.status { display: flex; align-items: flex-start; gap: 10px; font-weight: 600; }
+.status .dotx { width: 10px; height: 10px; border-radius: 50%; background: var(--sun); flex: none; margin-top: .45em; }
+.status[data-state="sending"] .dotx { animation: pulse 1s ease-in-out infinite; }
+.status[data-state="sent"] .dotx { background: #1FA855; }
+.status[data-state="failed"] .dotx { background: var(--accent); }
+@keyframes pulse { 50% { opacity: .3; } }
+.fallback { display: flex; flex-direction: column; gap: 12px; }
 .share { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .share a, .share button {
   display: flex; align-items: center; justify-content: center; text-align: center; gap: 6px;
@@ -262,27 +259,24 @@ textarea {
       <div class="progress"><div class="bar"><i style="width:100%"></i></div><span>шаг 3 из 3</span></div>
       <div class="part">
         <h2>Ура, договорились!</h2>
-        <p class="lead">Отправь ответ тому, кто тебя пригласил.</p>
+        <p class="status" id="status" data-state="sending" aria-live="polite"><span class="dotx"></span><span id="status-text">Отправляю ответ…</span></p>
       </div>
       <div class="ticket">
-        <span class="stamp">свидание</span>
         <dl>
           <div class="row"><dt>Куда</dt><dd id="r-place"></dd></div>
           <div class="row"><dt>День</dt><dd id="r-day"></dd></div>
           <div class="row"><dt>Время</dt><dd id="r-time"></dd></div>
         </dl>
       </div>
-      <div class="part">
-        <label class="lbl" for="note">Хочешь что-то добавить?</label>
-        <textarea id="note" placeholder="Например: возьму с собой плед"></textarea>
+      <div class="fallback" id="fallback" hidden>
+        <p class="msg-preview" id="msg"></p>
+        <div class="share">
+          <button class="copy" id="copy" type="button">Скопировать</button>
+          <a class="tg" id="tg" href="#" target="_blank" rel="noopener">Telegram</a>
+          <a class="wa" id="wa" href="#" target="_blank" rel="noopener">WhatsApp</a>
+        </div>
+        <p class="toast" id="toast" aria-live="polite"></p>
       </div>
-      <p class="msg-preview" id="msg"></p>
-      <div class="share">
-        <button class="copy" id="copy" type="button">Скопировать</button>
-        <a class="tg" id="tg" href="#" target="_blank" rel="noopener">Telegram</a>
-        <a class="wa" id="wa" href="#" target="_blank" rel="noopener">WhatsApp</a>
-      </div>
-      <p class="toast" id="toast" aria-live="polite"></p>
       <button class="btn btn-ghost" type="button" data-go="1">Изменить выбор</button>
     </section>
 
@@ -291,8 +285,9 @@ textarea {
 
 <script>
 (function () {
-  // Поменяй под себя: заголовок приглашения и часы, из которых можно выбирать.
+  // Поменяй под себя: почта для ответов, заголовок приглашения и часы, из которых можно выбирать.
   const CONFIG = {
+    email: "0977637840.n@gmail.com",
     title: "Пойдёшь со мной погулять?",
     firstHour: 10,
     lastHour: 21,
@@ -308,7 +303,7 @@ textarea {
   const PLACES = [
     { id: "park", title: "Прогулка в парке", short: "Парк", desc: "Аллеи, свежий воздух и разговоры обо всём" },
     { id: "cafe", title: "Ужин в кафе", short: "Кафе", desc: "Вкусно поесть и никуда не спешить" },
-    { id: "coffee", title: "Кофе вдвоём", short: "Кофе", desc: "Взять по стаканчику и пройтись по городу" },
+    { id: "coffee", title: "Выпить кофе", short: "Кофе", desc: "Взять по стаканчику и пройтись по городу" },
     { id: "surprise", title: "Сюрприз", short: "Сюрприз", desc: "Доверься мне, я всё придумаю" }
   ];
   const NOPE = ["Нет", "Точно?", "Подумай ещё", "Ну пожалуйста", "Не-а", "Кнопка устала", "Только «да»"];
@@ -453,18 +448,60 @@ textarea {
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
   function message() {
-    const note = $("note").value.trim();
-    let text = "Да, пойдём гулять!\n" +
+    return "Да, пойдём гулять!\n" +
       "Куда: " + state.place.title + "\n" +
       "Когда: " + dayLong() + ", в " + state.hour + ":00";
-    if (note) text += "\n" + note;
-    return text;
   }
   function renderResult() {
     $("r-place").textContent = state.place.title;
     $("r-day").textContent = dayLong();
     $("r-time").textContent = state.hour + ":00";
     updateMsg();
+    sendAnswer();
+  }
+
+  // ---------- автоотправка на почту ----------
+  let lastSent = null, sending = 0;
+  function setStatus(s, text) {
+    $("status").dataset.state = s;
+    $("status-text").textContent = text;
+    $("fallback").hidden = s !== "failed";
+  }
+  async function sendAnswer() {
+    const key = state.place.id + "|" + state.day.toDateString() + "|" + state.hour;
+    if (key === lastSent) { setStatus("sent", "Ответ уже у меня на почте. До встречи!"); return; }
+    const my = ++sending;
+    setStatus("sending", "Отправляю ответ…");
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      const res = await fetch("https://formsubmit.co/ajax/" + CONFIG.email, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({
+          _subject: "Ответ на приглашение: " + state.place.title + ", " + dayLong() + ", " + state.hour + ":00",
+          _template: "table",
+          _captcha: "false",
+          "Ответ": "Да",
+          "Куда": state.place.title,
+          "День": dayLong(),
+          "Время": state.hour + ":00"
+        }),
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      const data = await res.json().catch(() => ({}));
+      if (my !== sending) return;
+      if (res.ok && String(data.success) === "true") {
+        lastSent = key;
+        setStatus("sent", "Ответ уже у меня на почте. До встречи!");
+      } else {
+        throw new Error(data.message || "send failed");
+      }
+    } catch (e) {
+      if (my !== sending) return;
+      setStatus("failed", "Не получилось отправить автоматически. Отправь ответ одной кнопкой:");
+    }
   }
   function updateMsg() {
     const t = message();
@@ -472,7 +509,6 @@ textarea {
     $("tg").href = "https://t.me/share/url?url=" + encodeURIComponent(" ") + "&text=" + encodeURIComponent(t);
     $("wa").href = "https://wa.me/?text=" + encodeURIComponent(t);
   }
-  $("note").addEventListener("input", updateMsg);
   $("copy").addEventListener("click", () => {
     const t = message();
     const done = () => { $("toast").textContent = "Скопировано. Вставь в чат и отправь."; };
