@@ -86,7 +86,7 @@ body {
   box-shadow: 0 24px 60px -24px var(--shadow);
   overflow: hidden;
 }
-.step { display: flex; flex-direction: column; gap: 20px; animation: rise .45s ease both; }
+.step { display: flex; flex-direction: column; gap: 20px; animation: rise .45s ease backwards; }
 @keyframes rise { from { transform: translateY(10px); opacity: .4; } to { transform: none; opacity: 1; } }
 
 h1, h2 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
@@ -123,7 +123,8 @@ p { margin: 0; }
 .btn-next:disabled { opacity: .35; cursor: not-allowed; }
 .btn-ghost { background: transparent; color: var(--muted); padding: 10px 12px; font-weight: 600; }
 .answer { display: flex; gap: 14px; justify-content: center; align-items: center; min-height: 96px; flex-wrap: wrap; }
-.btn-no.loose { position: absolute; z-index: 5; transition: left .28s cubic-bezier(.3,1.4,.5,1), top .28s cubic-bezier(.3,1.4,.5,1); }
+.btn-no.loose { position: absolute; z-index: 5; transition: transform .25s ease; }
+.btn-no.loose.jump { transition: left .28s cubic-bezier(.3,1.4,.5,1), top .28s cubic-bezier(.3,1.4,.5,1); }
 .nope-note { min-height: 1.5em; color: var(--muted); font-size: .92rem; }
 
 /* progress */
@@ -272,7 +273,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 @keyframes shoesIn { from { opacity: 0; transform: translateX(-70%) rotate(-8deg); } }
 .word { display: inline-block; animation: wordIn .6s cubic-bezier(.2, 1.5, .4, 1) both; animation-delay: calc(1s + var(--i) * .14s); }
 @keyframes wordIn { from { opacity: 0; transform: translateY(.7em) rotate(-8deg) scale(.7); } }
-#s0 .answer { animation: fadeUp .6s ease-out 1.45s both; }
+#s0 .answer { animation: fadeUp .6s ease-out 1.45s backwards; }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } }
 #yes { animation: yesPulse 2.4s ease-in-out 2.2s infinite; }
 @keyframes yesPulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 12px rgba(0, 0, 0, 0); } }
@@ -503,11 +504,12 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
   }
   document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => go(+b.dataset.go)));
 
-  // ---------- убегающая «Нет» ----------
+  // ---------- убегающая «Нет»: после первого нажатия летает по карточке и отскакивает от краёв и от «Да» ----------
   const card = $("card"), yes = $("yes"), no = $("no");
-  let lastDodge = 0;
+  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let lastDodge = 0, bx = 0, by = 0, vx = 0, vy = 0, bRaf = null, lastT = 0;
   function dodge(e) {
-    if (e) e.preventDefault();
+    if (e && e.cancelable) e.preventDefault();
     if (Date.now() - lastDodge < 350) return;
     lastDodge = Date.now();
     state.nope++;
@@ -515,15 +517,61 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     $("nope-note").textContent = NOPE_NOTES[Math.min(state.nope, NOPE_NOTES.length - 1)];
     yes.style.transform = "scale(" + Math.min(1 + state.nope * 0.09, 1.7) + ")";
     const c = card.getBoundingClientRect();
+    const r = no.getBoundingClientRect();
     if (!no.classList.contains("loose")) {
-      const r = no.getBoundingClientRect();
       no.style.left = (r.left - c.left) + "px";
       no.style.top = (r.top - c.top) + "px";
       no.classList.add("loose");
-      void no.offsetWidth;
     }
-    const w = no.offsetWidth, h = no.offsetHeight, pad = 12;
-    const y = yes.getBoundingClientRect();
+    if (calm()) { jumpAway(c); return; }
+    // отскок в сторону от пальца или курсора, каждый раз быстрее
+    const mx = r.left + r.width / 2, my = r.top + r.height / 2;
+    let dx, dy;
+    if (e && e.clientX != null && (e.clientX || e.clientY)) { dx = mx - e.clientX; dy = my - e.clientY; }
+    else { const a = Math.random() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); }
+    if (Math.hypot(dx, dy) < 1) { const a = Math.random() * Math.PI * 2; dx = Math.cos(a); dy = Math.sin(a); }
+    // всегда по диагонали: угол не круче 65° и не положе 25°
+    let ang = Math.atan2(dy, dx);
+    const base = Math.abs(Math.atan2(Math.abs(Math.sin(ang)), Math.abs(Math.cos(ang))));
+    const clamped = Math.min(Math.max(base, 25 * Math.PI / 180), 65 * Math.PI / 180);
+    const speed = Math.min(150 + state.nope * 40, 420);
+    vx = Math.sign(Math.cos(ang) || 1) * Math.cos(clamped) * speed;
+    vy = Math.sign(Math.sin(ang) || 1) * Math.sin(clamped) * speed;
+    bx = parseFloat(no.style.left) || 0; by = parseFloat(no.style.top) || 0;
+    no.style.transform = "scale(.9)";
+    setTimeout(() => { no.style.transform = ""; }, 160);
+    if (!bRaf) { lastT = performance.now(); bRaf = requestAnimationFrame(stepBounce); }
+  }
+  function stepBounce(t) {
+    const dt = Math.max(0, Math.min(0.05, (t - lastT) / 1000)); lastT = t;
+    const cw = card.clientWidth, ch = card.clientHeight, w = no.offsetWidth, h = no.offsetHeight, pad = 10;
+    let nx = bx + vx * dt, ny = by + vy * dt;
+    if (nx < pad) { nx = pad; vx = Math.abs(vx); }
+    if (nx > cw - w - pad) { nx = cw - w - pad; vx = -Math.abs(vx); }
+    if (ny < pad) { ny = pad; vy = Math.abs(vy); }
+    if (ny > ch - h - pad) { ny = ch - h - pad; vy = -Math.abs(vy); }
+    // «Да» как препятствие: отскок по оси с меньшим заходом
+    const c = card.getBoundingClientRect(), y = yes.getBoundingClientRect();
+    const yl = y.left - c.left, yt = y.top - c.top, yr = yl + y.width, yb = yt + y.height;
+    if (nx < yr && nx + w > yl && ny < yb && ny + h > yt) {
+      // вытолкнуть наружу по оси с меньшим заходом и направить прочь от «Да»
+      const ox = Math.min(nx + w - yl, yr - nx), oy = Math.min(ny + h - yt, yb - ny);
+      if (ox < oy) {
+        if (nx + w / 2 < (yl + yr) / 2) { nx = yl - w; vx = -Math.abs(vx); } else { nx = yr; vx = Math.abs(vx); }
+      } else {
+        if (ny + h / 2 < (yt + yb) / 2) { ny = yt - h; vy = -Math.abs(vy); } else { ny = yb; vy = Math.abs(vy); }
+      }
+      nx = Math.min(Math.max(nx, pad), cw - w - pad);
+      ny = Math.min(Math.max(ny, pad), ch - h - pad);
+    }
+    bx = nx; by = ny;
+    no.style.left = bx + "px"; no.style.top = by + "px";
+    bRaf = requestAnimationFrame(stepBounce);
+  }
+  function jumpAway(c) {
+    // без анимаций: просто перескок в свободное место
+    no.classList.add("jump");
+    const w = no.offsetWidth, h = no.offsetHeight, pad = 12, y = yes.getBoundingClientRect();
     let x, t, tries = 0;
     do {
       x = pad + Math.random() * Math.max(0, c.width - w - pad * 2);
@@ -537,10 +585,11 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     return x < r.right + m && x + w > r.left - m && y < r.bottom + m && y + h > r.top - m;
   }
   function resetNo() {
-    no.classList.remove("loose");
-    no.style.left = no.style.top = "";
+    if (bRaf) { cancelAnimationFrame(bRaf); bRaf = null; }
+    no.classList.remove("loose", "jump");
+    no.style.left = no.style.top = no.style.transform = "";
   }
-  no.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") dodge(); });
+  no.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") dodge(e); });
   no.addEventListener("pointerdown", dodge);
   no.addEventListener("click", dodge);
   yes.addEventListener("click", () => { burst(); go(1); });
