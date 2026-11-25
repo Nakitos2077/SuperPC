@@ -82,9 +82,18 @@ body {
   -webkit-backdrop-filter: blur(22px) saturate(1.25);
   backdrop-filter: blur(22px) saturate(1.25);
   border-radius: 28px;
-  padding: 28px clamp(20px, 5vw, 36px) 30px;
+  --cpad: clamp(20px, 5vw, 36px);
+  padding: 28px var(--cpad) 30px;
   box-shadow: 0 24px 60px -24px var(--shadow);
   overflow: hidden;
+}
+@supports (overflow: clip) { .card { overflow: clip; } }
+/* поле «своё» и кнопки всегда на виду внизу экрана, пока листаешь варианты */
+.step-foot {
+  position: sticky; bottom: 0; z-index: 3; display: flex; flex-direction: column; gap: 12px;
+  margin: 0 calc(-1 * var(--cpad)) -30px; padding: 14px var(--cpad) calc(18px + env(safe-area-inset-bottom, 0px));
+  background: var(--card); -webkit-backdrop-filter: blur(22px) saturate(1.25); backdrop-filter: blur(22px) saturate(1.25);
+  border-top: 1px solid var(--line); border-radius: 0 0 28px 28px;
 }
 .step { display: flex; flex-direction: column; gap: 20px; animation: rise .45s ease backwards; }
 @keyframes rise { from { transform: translateY(10px); opacity: .4; } to { transform: none; opacity: 1; } }
@@ -143,7 +152,7 @@ p { margin: 0; }
 }
 .opt:hover { transform: translateY(-2px); }
 /* photo tiles: the picture fills the card, the caption sits on it */
-.opt { position: relative; overflow: hidden; aspect-ratio: 3 / 4; max-width: 100%; padding: 0; border-width: 3px; justify-content: flex-end !important; gap: 0; }
+.opt { position: relative; overflow: hidden; aspect-ratio: 1 / 1; max-width: 100%; padding: 0; border-width: 3px; justify-content: flex-end !important; gap: 0; }
 .thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumb-icon { display: grid; place-items: center; padding-bottom: 28%; box-sizing: border-box; background: linear-gradient(160deg, #C7A272, #7A5A38); }
 .opt .thumb-icon svg { width: 56px; height: 56px; color: rgba(255, 255, 255, .9); }
@@ -153,7 +162,10 @@ p { margin: 0; }
 .opt .cap small { color: rgba(255, 255, 255, .88); text-shadow: 0 1px 6px rgba(0, 0, 0, .5); }
 .opt[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .opt svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
-.opt b { font-family: var(--display); font-weight: 500; font-size: clamp(.72rem, 3.2vw, 1rem); max-width: 100%; white-space: nowrap; }
+.opt b { font-family: var(--display); font-weight: 500; font-size: clamp(.8rem, 3.4vw, 1rem); max-width: 100%; text-wrap: balance; }
+.opt.wide { grid-column: 1 / -1; aspect-ratio: 3 / 1; }
+.opt.wide .thumb-icon { padding-bottom: 0; place-items: center start; padding-left: 9%; }
+.opt.wide .cap { padding-bottom: 0; justify-content: center; height: 100%; }
 .opt small { color: var(--muted); font-size: .84rem; line-height: 1.35; }
 .opt[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .opt[aria-checked="true"] svg { color: var(--accent); }
@@ -262,6 +274,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 @media (max-width: 380px) {
   .opts { grid-template-columns: 1fr; }
   .opt { aspect-ratio: 16 / 10; }
+  .opt.wide { aspect-ratio: 3 / 1; }
   .share { grid-template-columns: 1fr; }
 }
 /* ---------- появление ---------- */
@@ -387,13 +400,15 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
         <p class="lead">Выбери, что тебе больше нравится.</p>
       </div>
       <div class="opts" id="opts" role="radiogroup" aria-label="Место"></div>
-      <div class="part">
-        <h3><label for="note">Дополнение или своё</label></h3>
-        <textarea id="note" rows="1" maxlength="500"></textarea>
-      </div>
-      <div class="nav">
-        <button class="btn btn-ghost" type="button" data-go="0">Назад</button>
-        <button class="btn btn-next" id="to2" type="button" disabled>Дальше</button>
+      <div class="step-foot">
+        <div class="part">
+          <h3><label for="note">Дополнение или своё</label></h3>
+          <textarea id="note" rows="1" maxlength="500"></textarea>
+        </div>
+        <div class="nav">
+          <button class="btn btn-ghost" type="button" data-go="0">Назад</button>
+          <button class="btn btn-next" id="to2" type="button" disabled>Дальше</button>
+        </div>
       </div>
     </section>
 
@@ -494,7 +509,10 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     { id: "park", title: "Прогулка в парке", short: "Парк", desc: "Чистый воздух и природа", img: "img-park.jpg" },
     { id: "monastery", title: "Монастыри", short: "Монастыри", desc: "", img: "img-monastery.jpg" },
     { id: "coffee", title: "Кафе, кофе", short: "Кафе, кофе", desc: "Кофе, когда нечасто, не вредно)", img: "img-coffee.jpg" },
-    { id: "surprise", title: "Неизведанное", short: "Неизведанное", desc: "" }
+    { id: "lviv", title: "Lviv Croissants", short: "Lviv Croissants", desc: "", img: "logo-lviv.svg" },
+    { id: "dominos", title: "Domino's Pizza", short: "Domino's Pizza", desc: "", img: "logo-dominos.svg" },
+    { id: "mcdonalds", title: "McDonald's", short: "McDonald's", desc: "", img: "logo-mcdonalds.svg" },
+    { id: "surprise", title: "Неизведанное", short: "Неизведанное", desc: "", wide: true }
   ];
   const NOPE = ["Нет", "Точно?", "Подумай ещё", "Ну пожалуйста", "Не-а", "Кнопка устала", "Только «да»"];
   const NOPE_NOTES = ["", "Кнопка «Нет» стесняется.", "Она снова убежала.", "Кажется, вариант только один.", "«Да» уже ждёт тебя."];
@@ -671,7 +689,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
   const opts = $("opts");
   PLACES.forEach((p, idx) => {
     const b = document.createElement("button");
-    b.type = "button"; b.className = "opt"; b.id = "opt-" + p.id;
+    b.type = "button"; b.className = "opt" + (p.wide ? " wide" : ""); b.id = "opt-" + p.id;
     b.style.setProperty("--i", idx);
     b.setAttribute("role", "radio"); b.setAttribute("aria-checked", "false");
     const thumb = p.img
