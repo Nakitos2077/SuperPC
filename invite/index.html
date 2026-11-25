@@ -164,6 +164,8 @@ p { margin: 0; }
 .opt svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
 .opt b { font-family: var(--display); font-weight: 500; font-size: clamp(.8rem, 3.4vw, 1rem); max-width: 100%; text-wrap: balance; }
 .opt.wide { grid-column: 1 / -1; aspect-ratio: 3 / 1; }
+/* название уже есть на логотипе: без подписи и затемнения */
+.opt.plain::after, .opt.plain .cap { display: none; }
 .opt.wide .thumb-icon { padding-bottom: 0; place-items: center start; padding-left: 9%; }
 .opt.wide .cap { padding-bottom: 0; justify-content: center; height: 100%; }
 .opt small { color: var(--muted); font-size: .84rem; line-height: 1.35; }
@@ -509,7 +511,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     { id: "park", title: "Прогулка в парке", short: "Парк", desc: "Чистый воздух и природа", img: "img-park.jpg" },
     { id: "monastery", title: "Монастыри", short: "Монастыри", desc: "", img: "img-monastery.jpg" },
     { id: "coffee", title: "Кафе, кофе", short: "Кафе, кофе", desc: "Кофе, когда нечасто, не вредно)", img: "img-coffee.jpg" },
-    { id: "lviv", title: "Lviv Croissants", short: "Lviv Croissants", desc: "", img: "logo-lviv.svg" },
+    { id: "lviv", title: "Lviv Croissants", short: "Lviv Croissants", desc: "", img: "logo-lviv.jpg", nameInLogo: true },
     { id: "dominos", title: "Domino's Pizza", short: "Domino's Pizza", desc: "", img: "logo-dominos.svg" },
     { id: "mcdonalds", title: "McDonald's", short: "McDonald's", desc: "", img: "logo-mcdonalds.svg" },
     { id: "surprise", title: "Неизведанное", short: "Неизведанное", desc: "", wide: true }
@@ -689,7 +691,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
   const opts = $("opts");
   PLACES.forEach((p, idx) => {
     const b = document.createElement("button");
-    b.type = "button"; b.className = "opt" + (p.wide ? " wide" : ""); b.id = "opt-" + p.id;
+    b.type = "button"; b.className = "opt" + (p.wide ? " wide" : "") + (p.nameInLogo ? " plain" : ""); b.id = "opt-" + p.id;
     b.style.setProperty("--i", idx);
     b.setAttribute("role", "radio"); b.setAttribute("aria-checked", "false");
     const thumb = p.img
