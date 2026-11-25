@@ -291,11 +291,10 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
 .bye-text { font-family: var(--display); font-weight: 700; font-size: clamp(2.1rem, 10vw, 3.4rem); color: #FFFFFF; letter-spacing: -.01em; }
 .smiley { width: min(48vw, 210px); height: auto; animation: bob 2.6s ease-in-out 1s infinite; }
 @keyframes bob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-8px) rotate(4deg); } }
-.sm-face { fill: #FFC53D; }
-.sm-cheek { fill: #FF7FA6; opacity: .65; }
-.sm-eye { fill: #2B2118; transform-box: fill-box; transform-origin: center; animation: blink 3.4s 1.4s infinite; }
+.sm-face { fill: none; stroke: #FFFFFF; stroke-width: 5; }
+.sm-eye { fill: #FFFFFF; transform-box: fill-box; transform-origin: center; animation: blink 3.4s 1.4s infinite; }
 @keyframes blink { 0%, 90%, 100% { transform: scaleY(1); } 94% { transform: scaleY(.1); } }
-.sm-mouth { fill: none; stroke: #2B2118; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 90; }
+.sm-mouth { fill: none; stroke: #FFFFFF; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 90; }
 .bye-back { color: rgba(255, 255, 255, .7); font-size: .95rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -318,9 +317,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
   <div class="bye" id="bye" hidden>
     <p class="bye-text">До встречи!</p>
     <svg class="smiley" viewBox="0 0 120 120" aria-hidden="true">
-      <circle class="sm-face" cx="60" cy="60" r="56"/>
-      <ellipse class="sm-cheek" cx="30" cy="72" rx="10" ry="6"/>
-      <ellipse class="sm-cheek" cx="90" cy="72" rx="10" ry="6"/>
+      <circle class="sm-face" cx="60" cy="60" r="54"/>
       <ellipse class="sm-eye" cx="42" cy="48" rx="6" ry="9"/>
       <ellipse class="sm-eye" cx="78" cy="48" rx="6" ry="9"/>
       <path class="sm-mouth" id="sm-mouth" d="M36 74 Q60 98 84 74"/>
