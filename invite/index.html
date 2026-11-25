@@ -513,8 +513,38 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
   });
 
   // ---------- шаги ----------
+  // ---------- живые уведомления в Telegram: открыли ссылку и на каком шаге ----------
+  const visit = "#" + Math.random().toString(36).slice(2, 5);
+  const STEP_TEXT = {
+    1: "Шаг 1 из 4: выбирает, куда пойти",
+    2: "Шаг 2 из 4: выбирает день и время",
+    3: "Шаг 3 из 4: выбирает место встречи на карте",
+    4: "Шаг 4 из 4: всё выбрано, ответ отправляется"
+  };
+  let saidYes = false, lastNotified = null;
+  function notify(text) {
+    const token = CONFIG.tgToken.join("");
+    if (!token || !CONFIG.tgChatId) return;
+    try {
+      fetch("https://api.telegram.org/bot" + token + "/sendMessage", {
+        method: "POST", keepalive: true,
+        body: new URLSearchParams({ chat_id: CONFIG.tgChatId, text: text + "  " + visit })
+      }).catch(() => {});
+    } catch (e) { /* уведомление не обязательно */ }
+  }
+  function notifyStep(n) {
+    if (n === lastNotified || !STEP_TEXT[n]) return;
+    const back = lastNotified != null && n < lastNotified;
+    let text = (back ? "Вернулась назад. " : "") + STEP_TEXT[n];
+    if (n === 1 && !saidYes) { saidYes = true; text = "Нажала «Да»! " + text; }
+    lastNotified = n;
+    notify(text);
+  }
+  notify("Открыли приглашение, первый экран «" + CONFIG.title + "»");
+
   function go(n) {
     state.step = n;
+    notifyStep(n);
     for (let i = 0; i < 5; i++) $("s" + i).hidden = i !== n;
     if (n !== 0) resetNo();
     if (n === 2) renderDays();
@@ -879,6 +909,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     let text = "Ответ на приглашение: да!\nКуда: " + f.place + "\nДень: " + f.day + "\nВремя: " + f.time;
     if (f.meet) text += "\nМесто встречи: " + f.meet + "\n" + f.meetLink;
     if (f.note) text += "\nДополнение: " + f.note;
+    text += "\n" + visit;
     const r = await post("https://api.telegram.org/bot" + token + "/sendMessage",
       new URLSearchParams({ chat_id: CONFIG.tgChatId, text }));
     return { reached: r.reached, ok: r.ok && r.data.ok === true };
