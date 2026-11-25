@@ -23,6 +23,7 @@
   --accent-soft: #FDE3EC;
   --accent-ink: #FFFFFF;
   --sun: #FFC53D;
+  --red: #D92D3A;
   --veil: rgba(234, 241, 251, .06);
   --card: rgba(255, 252, 247, .84);
   --glass-a: rgba(255, 197, 61, .32);
@@ -39,7 +40,7 @@
   :root:not([data-theme="light"]) {
     --bg: #1A1510; --dot: #2A2219; --surface: #2A221A; --ink: #F7F1E8; --muted: #CDBFAD;
     --line: rgba(255, 240, 220, .16); --chip: rgba(255, 240, 220, .09); --accent: #FF5E93; --accent-soft: rgba(255, 94, 147, .22); --accent-ink: #FFFFFF;
-    --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
+    --sun: #FFCE5C; --red: #FF5A5F; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
     --veil: rgba(20, 14, 8, .38);
     --card: rgba(30, 23, 16, .66);
   --glass-a: rgba(255, 226, 150, .46); --glass-b: rgba(255, 165, 195, .44); --glass-line: rgba(255, 248, 238, .85); --glass-sole: rgba(255, 248, 238, .24); --glass-shine: rgba(255, 255, 255, .75);
@@ -48,7 +49,7 @@
 :root[data-theme="dark"] {
   --bg: #1A1510; --dot: #2A2219; --surface: #2A221A; --ink: #F7F1E8; --muted: #CDBFAD;
   --line: rgba(255, 240, 220, .16); --chip: rgba(255, 240, 220, .09); --accent: #FF5E93; --accent-soft: rgba(255, 94, 147, .22); --accent-ink: #FFFFFF;
-  --sun: #FFCE5C; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
+  --sun: #FFCE5C; --red: #FF5A5F; --shadow: rgba(0, 0, 0, .55); color-scheme: dark;
   --veil: rgba(20, 14, 8, .38);
   --card: rgba(30, 23, 16, .66);
   --glass-a: rgba(255, 226, 150, .46); --glass-b: rgba(255, 165, 195, .44); --glass-line: rgba(255, 248, 238, .85); --glass-sole: rgba(255, 248, 238, .24); --glass-shine: rgba(255, 255, 255, .75);
@@ -178,6 +179,10 @@ p { margin: 0; }
 .hour:disabled { opacity: .3; cursor: not-allowed; text-decoration: line-through; }
 .hour[aria-checked="true"] { background: var(--accent); color: var(--accent-ink); }
 .part { display: flex; flex-direction: column; gap: 10px; }
+.day-notes { display: flex; flex-direction: column; gap: 4px; }
+.day-notes p { color: var(--red); font-weight: 700; font-size: .95rem; }
+.chip.flag .dn { color: var(--red); }
+.chip.flag[aria-checked="true"] .dn { color: var(--accent-ink); }
 textarea {
   width: 100%; box-sizing: border-box; resize: vertical; min-height: 52px; border-radius: 14px;
   border: 2px solid var(--line); background: var(--chip); color: var(--ink); padding: 12px 14px;
@@ -344,6 +349,7 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
       <div class="part">
         <h3 id="days-h">День</h3>
         <div class="days-scroll"><div class="days" id="days" role="radiogroup" aria-labelledby="days-h"></div></div>
+        <div class="day-notes" id="day-notes" hidden></div>
       </div>
       <div class="part">
         <h3 id="hours-h">Время</h3>
@@ -416,7 +422,11 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
     daysAhead: 14,
     // Карта: где она откроется сначала (широта, долгота) и насколько крупно
     mapCenter: [50.4501, 30.5234],
-    mapZoom: 12
+    mapZoom: 12,
+    // Подписи к конкретным дням (год-месяц-день). Прошедшие дни не показываются.
+    dayNotes: {
+      "2026-11-26": "Тут так-то последний не постный день👀"
+    }
   };
 
   const ICONS = {
@@ -549,6 +559,16 @@ textarea:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
       b.style.setProperty("--i", added);
       b.setAttribute("role", "radio"); b.setAttribute("aria-checked", "false");
       if (d.getDay() === 0 || d.getDay() === 6) b.classList.add("weekend");
+      const iso = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      const dayNote = CONFIG.dayNotes && CONFIG.dayNotes[iso];
+      if (dayNote) {
+        b.classList.add("flag");
+        const n = document.createElement("p");
+        const w = d.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+        n.textContent = w.charAt(0).toUpperCase() + w.slice(1) + ": " + dayNote;
+        $("day-notes").appendChild(n);
+        $("day-notes").hidden = false;
+      }
       const wd = i === 0 ? "сегодня" : i === 1 ? "завтра" : d.toLocaleDateString("ru-RU", { weekday: "short" });
       const mn = d.toLocaleDateString("ru-RU", { month: "short" }).replace(".", "");
       b.innerHTML = '<span class="wd">' + wd + '</span><span class="dn">' + d.getDate() + '</span><span class="mn">' + mn + "</span>";
